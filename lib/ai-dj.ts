@@ -101,8 +101,11 @@ export function makeDjTrace(seed: number, prompts: readonly string[], bars = 8):
   let currentPrompt = prompts[0] ?? 'おまかせ、自然な流れで';
   for (let bar = 1; bar <= bars; bar += 1) {
     if (prompts[bar - 1] !== undefined) {
-      currentPrompt = clampPrompt(prompts[bar - 1]);
-      events.push({ type: 'prompt', bar, prompt: currentPrompt });
+      const nextPrompt = clampPrompt(prompts[bar - 1]);
+      if (nextPrompt !== clampPrompt(currentPrompt)) {
+        currentPrompt = nextPrompt;
+        events.push({ type: 'prompt', bar, prompt: currentPrompt });
+      } else currentPrompt = nextPrompt;
     }
     const decision = selectDjLoop(seed, currentPrompt, bar);
     events.push({ type: 'decision', bar, decision });

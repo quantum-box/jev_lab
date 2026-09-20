@@ -16,6 +16,7 @@ test('trace replay returns the last decision without running audio', () => {
   assert.equal(replayed.state?.bar, 4);
   assert.equal(replayed.events.length, trace.events.length);
   assert.equal(comparisonMetrics(trace).decisionCount, 4);
+  assert.equal(comparisonMetrics(trace).promptChanges, 1);
   assert.equal(comparisonMetrics(trace).measuredCost, 'unavailable');
 });
 
