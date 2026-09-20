@@ -109,7 +109,7 @@ test.describe('replay-only decision lab', () => {
     await expect(page.getByText('DETERMINISTIC REPLAY')).toBeVisible();
     await expect(page.locator('.rerank-row').nth(1)).toContainText(/↑|↓|—/);
     await page.getByRole('combobox', { name: 'Ranking view' }).selectOption('baseline');
-    await expect(page.getByText('RULE BASELINE')).toBeVisible();
+    await expect(page.getByText('RULE BASELINE', { exact: true })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Ranking view' })).toHaveValue('baseline');
     await page.getByRole('combobox', { name: 'Ranking view' }).selectOption('replay');
     await expect(page.getByTestId('baseline-ndcg')).toHaveText(/0\.\d+|1/);
