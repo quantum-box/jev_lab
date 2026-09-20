@@ -1,20 +1,23 @@
 'use client';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import { ENTITY_MATCHING_DATA_VERSION, ENTITY_MATCHING_VERSION, matchingEvaluationPairs, matchingExamples, matchingFailureExamples, matchPair, matchingMetrics, type MatchStatus } from '../../../lib/entity-matching';
+import { useEffect, useMemo, useState } from 'react';
+import { ENTITY_MATCHING_CORRECTION_RULE, ENTITY_MATCHING_DATA_VERSION, ENTITY_MATCHING_VERSION, matchingEvaluationPairs, matchingExamples, matchingFailureExamples, matchPair, matchingMetrics, parseMatchingCorrections, type MatchStatus } from '../../../lib/entity-matching';
 
 const labels: Record<MatchStatus, string> = { match: '一致候補', mismatch: '不一致', missing: '不足', 'needs-review': '要確認' };
 export default function EntityMatchingPage() {
   const [selectedId, setSelectedId] = useState(matchingExamples[0].id);
   const [threshold, setThreshold] = useState(0.75);
   const [corrections, setCorrections] = useState<Record<string, MatchStatus>>({});
+  useEffect(() => {
+    setCorrections(parseMatchingCorrections(localStorage.getItem('jev-entity-matching-corrections')));
+  }, []);
   const pair = matchingExamples.find(item => item.id === selectedId) ?? matchingExamples[0];
   const result = useMemo(() => matchPair(pair, threshold), [pair, threshold]);
   const metrics = useMemo(() => matchingMetrics(matchingEvaluationPairs, threshold), [threshold]);
   const corrected = corrections[pair.id] ?? result.overall;
   function saveCorrection(value: MatchStatus) {
     setCorrections(current => ({ ...current, [pair.id]: value }));
-    localStorage.setItem('jev-entity-matching-corrections', JSON.stringify({ version: ENTITY_MATCHING_VERSION, corrections: { ...corrections, [pair.id]: value } }));
+    localStorage.setItem('jev-entity-matching-corrections', JSON.stringify({ version: ENTITY_MATCHING_VERSION, rule: ENTITY_MATCHING_CORRECTION_RULE, corrections: { ...corrections, [pair.id]: value } }));
   }
   return <div className="account-page">
     <div className="detail-head"><Link className="back" href="/">← Back to gallery</Link><div className="eyebrow">業務 · Classify · deterministic replay</div><h1>左右のレコードを、項目ごとに照合する。</h1><p>一致・不一致・不足を項目単位で示し、全体候補と根拠を分けて表示します。自動統合は行わず、人の修正とルール版を保存します。</p></div>
@@ -26,4 +29,3 @@ export default function EntityMatchingPage() {
     </main><aside className="account-side"><section className="panel"><h2>評価境界 / version</h2><dl className="meta"><div><dt>rules</dt><dd>{ENTITY_MATCHING_VERSION}</dd></div><div><dt>dataset</dt><dd>{ENTITY_MATCHING_DATA_VERSION}</dd></div><div><dt>decision</dt><dd>候補表示のみ。全体の統合を自動確定しない</dd></div></dl><div className="notice">IDがない、連絡先が不足、または重要項目が不一致なら要確認へ戻します。</div></section><section className="panel"><h2>失敗例</h2>{matchingFailureExamples.map(item => <div className="trace-list" key={item.pair.id}><div><span>{item.pair.id}</span><strong>{item.pair.failure}</strong><small>Jev {labels[item.result.overall]} · ID {labels[item.idBaseline]} · string {labels[item.stringBaseline]}</small></div></div>)}</section><section className="panel safety"><h2>対象外</h2><ul><li>レコードの自動統合・削除</li><li>外部マスタ照会・書き込み</li><li>個人情報の補完・推測</li></ul></section></aside></div>
   </div>;
 }
-

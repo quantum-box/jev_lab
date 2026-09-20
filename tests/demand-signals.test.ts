@@ -17,6 +17,12 @@ test('CSV memo import and dictionary baseline stay local and deterministic', () 
   assert.equal(dictionaryBaseline(parsed.text).find(item => item.key === 'deliveryUrgency')?.score, 0.8);
 });
 
+test('CSV parser extracts quoted memo column with commas and escaped quotes', () => {
+  const parsed = parseDemandCsv('source,memo,owner\nCRM,"担当者は""至急""と発言,供給不足",A\nweb,"購入予定がない,納期は未定",B');
+  assert.deepEqual(parsed.warnings, []);
+  assert.equal(parsed.text, '担当者は"至急"と発言,供給不足\n購入予定がない,納期は未定');
+});
+
 test('demand evaluation has 50 cases and finite rubric metrics', () => {
   assert.equal(demandEvaluationCases.length, 50);
   const metrics = demandMetrics(demandEvaluationCases);

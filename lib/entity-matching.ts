@@ -6,6 +6,7 @@ export type EntityPair = { id: string; label: string; left: EntityRecord; right:
 export type MatchResult = { pair: EntityPair; fields: FieldMatch[]; overall: MatchStatus; score: number; cost: number };
 export const ENTITY_MATCHING_VERSION = 'entity-matching-rules-2026.09.1';
 export const ENTITY_MATCHING_DATA_VERSION = 'entity-pairs-50-v1';
+export const ENTITY_MATCHING_CORRECTION_RULE = 'human-review-v1';
 
 export const matchingExamples: EntityPair[] = [
   { id: 'EM-001', label: '完全一致', left: { id: 'C-100', name: 'Acme Japan', email: 'ops@acme.example', phone: '03-1000-0000' }, right: { id: 'C-100', name: 'Acme Japan', email: 'ops@acme.example', phone: '03-1000-0000' }, expected: 'match' },
@@ -83,3 +84,14 @@ export const matchingEvaluationPairs: MatchingEvaluationPair[] = Array.from({ le
   return { ...base, id: 'PAIR-' + String(index + 1).padStart(3, '0'), category: base.label, left: { ...base.left }, right: { ...base.right } };
 });
 export const matchingFailureExamples = matchingExamples.filter(pair => pair.failure).map(pair => ({ pair, result: matchPair(pair), idBaseline: idBaseline(pair), stringBaseline: stringBaseline(pair) }));
+
+export type StoredMatchingCorrections = { version: string; rule: string; corrections: Record<string, MatchStatus> };
+export function parseMatchingCorrections(raw: string | null): Record<string, MatchStatus> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredMatchingCorrections>;
+    if (parsed.version !== ENTITY_MATCHING_VERSION || parsed.rule !== ENTITY_MATCHING_CORRECTION_RULE || !parsed.corrections || typeof parsed.corrections !== 'object') return {};
+    const knownIds = new Set(matchingExamples.map(pair => pair.id)); const valid = new Set<MatchStatus>(['match', 'mismatch', 'needs-review']);
+    return Object.fromEntries(Object.entries(parsed.corrections).filter(([id, status]) => knownIds.has(id) && valid.has(status as MatchStatus))) as Record<string, MatchStatus>;
+  } catch { return {}; }
+}

@@ -7,7 +7,8 @@ const codeWords = ['shell', 'terminal', 'python', 'exec', 'eval', 'code_interpre
 export function checkToolCall(request: ToolRequest, policy = defaultToolPolicy): ToolDecision {
   const tool = request.tool.trim().toLowerCase();
   if (policy.forbiddenTools.includes(tool) || codeWords.includes(tool)) return { status: 'deny', reason: 'コード実行系ツールは許可範囲外。禁止優先で停止しました。', matched: ['code-execution-deny'], fixedResponse: 'decision=deny; reason=code-execution' };
-  const allowed = policy.allowedTools[tool];
+  const hasAllowedTool = Object.prototype.hasOwnProperty.call(policy.allowedTools, tool);
+  const allowed = hasAllowedTool ? policy.allowedTools[tool] : undefined;
   if (!allowed) return { status: 'deny', reason: 'allowlistにないツールです。実行せず拒否しました。', matched: ['tool-not-allowlisted'], fixedResponse: 'decision=deny; reason=unknown-tool' };
   const keys = Object.keys(request.args);
   const forbidden = policy.forbiddenArgs[tool] ?? [];

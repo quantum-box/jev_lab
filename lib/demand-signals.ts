@@ -50,7 +50,26 @@ function scoreSignal(key: DemandSignalKey, text: string): Omit<DemandSignal, 'ke
 }
 
 export function analyzeDemandMemo(text: string, source: 'memo' | 'csv' = 'memo'): DemandSignal[] { return (Object.keys(demandSignalLabels) as DemandSignalKey[]).map(key => ({ key, ...scoreSignal(key, text), evidence: scoreSignal(key, text).evidence.map(item => ({ ...item, source })) })); }
-export function parseDemandCsv(csv: string): { text: string; warnings: string[] } { const rows = csv.split(/\r?\n/).map(row => row.trim()).filter(Boolean); if (!rows.length) return { text: '', warnings: ['CSVが空です。'] }; const values = rows.slice(1).map(row => row.split(',').slice(0, 2).join(' ')).filter(Boolean); return { text: values.join('\n'), warnings: rows[0].toLowerCase().includes('memo') ? [] : ['1行目をヘッダーとして扱いました。'] }; }
+function parseCsvRows(csv: string): string[][] {
+  const rows: string[][] = []; let row: string[] = []; let cell = ''; let quoted = false;
+  for (let index = 0; index < csv.length; index += 1) {
+    const char = csv[index];
+    if (char === '"') {
+      if (quoted && csv[index + 1] === '"') { cell += '"'; index += 1; }
+      else quoted = !quoted;
+    } else if (char === ',' && !quoted) { row.push(cell); cell = ''; }
+    else if ((char === '\n' || char === '\r') && !quoted) { if (char === '\r' && csv[index + 1] === '\n') index += 1; row.push(cell); if (row.some(value => value.trim())) rows.push(row); row = []; cell = ''; }
+    else cell += char;
+  }
+  if (cell || row.length) { row.push(cell); if (row.some(value => value.trim())) rows.push(row); }
+  return rows;
+}
+export function parseDemandCsv(csv: string): { text: string; warnings: string[] } {
+  const rows = parseCsvRows(csv); if (!rows.length) return { text: '', warnings: ['CSVが空です。'] };
+  const headers = rows[0].map(header => header.trim().toLocaleLowerCase('ja-JP')); const memoIndex = headers.findIndex(header => header === 'memo' || header === 'メモ' || header.includes('memo'));
+  const index = memoIndex >= 0 ? memoIndex : 0; const warnings = memoIndex >= 0 ? [] : ['memo列が見つからないため、先頭列をメモとして扱いました。'];
+  return { text: rows.slice(1).map(row => row[index] ?? '').filter(Boolean).join('\n'), warnings };
+}
 
 type EvalCase = { id: string; category: string; text: string; expected: Record<DemandSignalKey, number | null> };
 export const demandEvaluationCases: EvalCase[] = Array.from({ length: 50 }, (_, index) => { const sample = demandMemos[index % demandMemos.length]; return { id: `DS-FIX-${String(index + 1).padStart(2, '0')}`, category: sample.label, text: `${sample.text} [case ${index + 1}]`, expected: { ...sample.human } }; });
