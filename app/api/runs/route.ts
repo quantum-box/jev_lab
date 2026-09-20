@@ -1,0 +1,4 @@
+import {NextResponse} from 'next/server';
+import {runJudgment,JudgmentError,type ProviderMode,type JudgmentInput} from '../../../lib/judgments';
+export const runtime='nodejs';
+export async function POST(request:Request){try{const body=await request.json() as {slug?:string;text?:string;mode?:ProviderMode;requestId?:string};if(body.mode!=='jev'&&body.mode!=='rule'&&body.mode!=='replay')throw new JudgmentError('invalid_mode','Provider mode must be jev, rule, or replay.',400);const input:JudgmentInput={slug:body.slug??'',text:body.text??'',requestId:body.requestId};return NextResponse.json(await runJudgment(input,body.mode,request.signal))}catch(error){const e=error instanceof JudgmentError?error:new JudgmentError('internal','Unable to run judgment.');return NextResponse.json({error:{code:e.code,message:e.message}}, {status:e.status})}}

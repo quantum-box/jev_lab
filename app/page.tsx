@@ -1,0 +1,6 @@
+'use client';
+import {useState} from 'react';
+import Link from 'next/link';
+import {categories,pocs, type Category} from '../lib/pocs';
+import {PocCard} from '../components/PocCard';
+export default function Home(){const [category,setCategory]=useState<'All'|Category>('All'); const filtered=category==='All'?pocs:pocs.filter(p=>p.category===category); return <><section className="hero"><div><div className="eyebrow">Decision-making, made inspectable</div><h1>25 ways to make a better call.</h1><p>JEV AI Decision Lab は、判断にAIを使う小さな実験のギャラリーです。入力、根拠、評価方法をひとつの画面で確認できます。</p><Link href="/playground" className="primary playground-link">Jevを触って理解する →</Link></div><div className="hero-note"><strong>現在の実行モード</strong>サンプルと固定レスポンスによるリプレイ。外部APIキーや有料モデルは使用しません。<div className="notice">ゲーム・音声PoCは代替表示で利用できます。視覚・聴覚に依存しない説明を併記します。</div></div></section><section><div className="section-title"><h2>PoC gallery</h2><span className="count">{filtered.length} / {pocs.length} experiments</span></div><div className="toolbar" aria-label="Filter by category">{categories.map(c=><button key={c} className={`chip ${category===c?'active':''}`} onClick={()=>setCategory(c)}>{c}</button>)}</div><div className="grid">{filtered.map(p=><PocCard key={p.slug} poc={p}/>)}</div></section></>}
