@@ -1,0 +1,23 @@
+apiVersion: apps.tachy.one/v1alpha
+kind: CloudApps
+metadata:
+  name: jev-ai-decision-lab
+  tenantId: tn_01kxz0ytmhnab5vh53011cwctj
+spec:
+  apps:
+    - name: jev-ai-decision-lab
+      repository:
+        url: https://github.com/quantum-box/jev_lab
+        owner: quantum-box
+        name: jev_lab
+        defaultBranch: main
+      rootDirectory: .
+      framework: worker
+      deploymentTarget: cloudflare_workers
+      build:
+        installCommand: npm ci --no-audit --no-fund
+        command: npm run build:cloudflare
+        nodeVersion: "22"
+      readinessProof:
+        path: /
+        expectedStatus: 200

@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:cloudflare": "opennextjs-cloudflare build",
+    "preview:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
@@ -14,18 +16,20 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "next": "14.2.15",
+    "next": "14.2.35",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "1.15.1",
     "@playwright/test": "^1.48.2",
     "@types/node": "20.16.5",
     "@types/react": "18.3.5",
     "@types/react-dom": "18.3.0",
     "eslint": "8.57.1",
-    "eslint-config-next": "14.2.15",
+    "eslint-config-next": "14.2.35",
     "tsx": "4.19.1",
-    "typescript": "5.6.2"
+    "typescript": "5.6.2",
+    "wrangler": "4.59.2"
   }
 }
