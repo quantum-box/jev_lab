@@ -29,7 +29,11 @@ const synonyms: Record<string, string[]> = {
 };
 
 const tokenize = (value: string) => value.toLowerCase().split(/[\s,、。・/()（）:：!?！？_-]+/).filter(Boolean);
-const expanded = (value: string) => new Set(tokenize(value).flatMap(t => [t, ...(synonyms[t] ?? [])]));
+const expanded = (value: string) => new Set(tokenize(value).flatMap(t => {
+  const embedded = Object.keys(synonyms).filter(key => key.length > 1 && t.includes(key));
+  const terms = [t, ...embedded];
+  return terms.flatMap(term => [term, ...(synonyms[term] ?? [])]);
+}));
 
 export function retrieve(query: string, limit = 6): SearchDocument[] {
   const terms = expanded(query);
@@ -55,7 +59,7 @@ export function rank(query: string, candidates = retrieve(query), mode: RankingM
 }
 
 const querySeeds = [
-  ['password reset', 'd1'], ['pwdを忘れた', 'd1'], ['ログインできない', 'd2'], ['signin issue', 'd2'], ['2FA setup', 'd3'], ['二要素認証', 'd3'], ['invoice download', 'd4'], ['請求書を見たい', 'd4'], ['billing address', 'd5'], ['VAT番号変更', 'd5'], ['API key revoke', 'd6'], ['apiキー漏えい', 'd6'], ['webhook retry', 'd7'], ['delivery 2xx', 'd7'], ['CSV import', 'd8'], ['CSV重複', 'd8'], ['invite member', 'd9'], ['管理者権限', 'd9'], ['audit log', 'd10'], ['監査ログ', 'd10'], ['delete data', 'd11'], ['データ削除', 'd11'], ['email notification', 'd12'], ['Slack通知', 'd12'], ['passwordではない請求書', 'd4'], ['not login but invoice', 'd4'], ['APIではなくWebhook', 'd7'], ['ログイン以外の認証設定', 'd3'], ['請求書と領収書', 'd4'], ['invoice history', 'd4'], ['account lock', 'd2'], ['auth app', 'd3'], ['payment receipt', 'd4'], ['company billing profile', 'd5'], ['rotate secret key', 'd6'], ['signed webhook', 'd7'], ['UTF8 CSV', 'd8'], ['team role', 'd9'], ['actor IP audit', 'd10'], ['privacy erase', 'd11'], ['alert preferences', 'd12'], ['パスワード リセット 手順', 'd1'], ['SSOログイン障害', 'd2'], ['二段階 認証 アプリ', 'd3'], ['カード明細', 'd4'], ['請求先プロフィール', 'd5'], ['API access token', 'd6'], ['Webhook署名', 'd7'], ['取引データ import', 'd8'], ['メンバー招待', 'd9'], ['操作履歴 export', 'd10'], ['unrelated weather', 'd1'], ['復元できない削除', 'd11'], ['通知オフ', 'd12'], ['recipe for curry', 'd8'], ['duplicate invoice', 'd4'], ['not a payment question', 'd2'],
+  ['password reset', 'd1'], ['pwdを忘れた', 'd1'], ['ログインできない', 'd2'], ['signin issue', 'd2'], ['2FA setup', 'd3'], ['二要素認証', 'd3'], ['invoice download', 'd4'], ['請求書を見たい', 'd4'], ['billing address', 'd5'], ['VAT番号変更', 'd5'], ['API key revoke', 'd6'], ['apiキー漏えい', 'd6'], ['webhook retry', 'd7'], ['delivery 2xx', 'd7'], ['CSV import', 'd8'], ['CSV重複', 'd8'], ['invite member', 'd9'], ['管理者権限', 'd9'], ['audit log', 'd10'], ['監査ログ', 'd10'], ['delete data', 'd11'], ['データ削除', 'd11'], ['email notification', 'd12'], ['Slack通知', 'd12'], ['passwordではない請求書', 'd4'], ['not login but invoice', 'd4'], ['APIではなくWebhook', 'd7'], ['ログイン以外の認証設定', 'd3'], ['請求書と領収書', 'd4'], ['invoice history', 'd4'], ['account lock', 'd2'], ['auth app', 'd3'], ['payment receipt', 'd4'], ['company billing profile', 'd5'], ['rotate secret key', 'd6'], ['signed webhook', 'd7'], ['UTF8 CSV', 'd8'], ['team role', 'd9'], ['actor IP audit', 'd10'], ['privacy erase', 'd11'], ['alert preferences', 'd12'], ['パスワード リセット 手順', 'd1'], ['SSOログイン障害', 'd2'], ['二段階 認証 アプリ', 'd3'], ['カード明細', 'd4'], ['請求先プロフィール', 'd5'], ['API access token', 'd6'], ['Webhook署名', 'd7'], ['取引データ import', 'd8'], ['unrelated weather', 'd1'], ['メンバー招待', 'd9'], ['操作履歴 export', 'd10'], ['復元できない削除', 'd11'], ['通知オフ', 'd12'], ['recipe for curry', 'd8'], ['duplicate invoice', 'd4'], ['not a payment question', 'd2'],
 ];
 export const evaluationQueries: EvaluationQuery[] = querySeeds.slice(0, 50).map(([query, id], i) => ({ id: `q-${String(i + 1).padStart(2, '0')}`, query, labels: { [id]: 3 }, note: /not|ではない|以外/.test(query) ? 'negation / intent contrast' : /unrelated|recipe/.test(query) ? 'unrelated' : 'human-confirmed label' }));
 
