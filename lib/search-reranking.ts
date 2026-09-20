@@ -42,8 +42,8 @@ export function retrieve(query: string, limit = 6): SearchDocument[] {
     .filter(x => x.score > 0).sort((a, b) => b.score - a.score || a.doc.id.localeCompare(b.doc.id)).slice(0, limit).map(x => x.doc);
 }
 
-function relevance(query: string, doc: SearchDocument, label?: number) {
-  if (label !== undefined) return label;
+function relevance(query: string, doc: SearchDocument, label: number | undefined, evaluated = false) {
+  if (evaluated) return label ?? 0;
   const terms = expanded(query); return [...terms].reduce((n, term) => n + (doc.title.toLowerCase().includes(term) ? 3 : 0) + (doc.body.toLowerCase().includes(term) ? 1 : 0), 0);
 }
 
@@ -53,7 +53,7 @@ export function rank(query: string, candidates = retrieve(query), mode: RankingM
     const lexical = [...q].reduce((n, term) => n + (doc.title.toLowerCase().includes(term) ? 3 : 0) + (doc.body.toLowerCase().includes(term) ? 1 : 0) + (doc.tags.some(tag => tag.includes(term)) ? 2 : 0), 0);
     // Replay is a query/document rubric only. Evaluation labels are never a feature.
     const rerankBoost = mode === 'replay' ? (doc.title.toLowerCase().includes(query.toLowerCase()) ? 1 : 0) + (doc.tags.some(tag => [...q].some(term => tag === term)) ? .5 : 0) : 0;
-    return { doc, originalRank: index + 1, score: lexical + rerankBoost, relevance: relevance(query, doc, labels?.[doc.id]) };
+    return { doc, originalRank: index + 1, score: lexical + rerankBoost, relevance: relevance(query, doc, labels?.[doc.id], labels !== undefined) };
   });
   scored.sort((a, b) => b.score - a.score || a.originalRank - b.originalRank || a.doc.id.localeCompare(b.doc.id));
   return scored.map((x, i) => ({ ...x.doc, originalRank: x.originalRank, rank: i + 1, score: Number(x.score.toFixed(2)), rankChange: x.originalRank - (i + 1), relevance: x.relevance }));
@@ -62,12 +62,12 @@ export function rank(query: string, candidates = retrieve(query), mode: RankingM
 const querySeeds = [
   ['password reset', 'd1'], ['pwdを忘れた', 'd1'], ['ログインできない', 'd2'], ['signin issue', 'd2'], ['2FA setup', 'd3'], ['二要素認証', 'd3'], ['invoice download', 'd4'], ['請求書を見たい', 'd4'], ['billing address', 'd5'], ['VAT番号変更', 'd5'], ['API key revoke', 'd6'], ['apiキー漏えい', 'd6'], ['webhook retry', 'd7'], ['delivery 2xx', 'd7'], ['CSV import', 'd8'], ['CSV重複', 'd8'], ['invite member', 'd9'], ['管理者権限', 'd9'], ['audit log', 'd10'], ['監査ログ', 'd10'], ['delete data', 'd11'], ['データ削除', 'd11'], ['email notification', 'd12'], ['Slack通知', 'd12'], ['passwordではない請求書', 'd4'], ['not login but invoice', 'd4'], ['APIではなくWebhook', 'd7'], ['ログイン以外の認証設定', 'd3'], ['請求書と領収書', 'd4'], ['invoice history', 'd4'], ['account lock', 'd2'], ['auth app', 'd3'], ['payment receipt', 'd4'], ['company billing profile', 'd5'], ['rotate secret key', 'd6'], ['signed webhook', 'd7'], ['UTF8 CSV', 'd8'], ['team role', 'd9'], ['actor IP audit', 'd10'], ['privacy erase', 'd11'], ['alert preferences', 'd12'], ['パスワード リセット 手順', 'd1'], ['SSOログイン障害', 'd2'], ['二段階 認証 アプリ', 'd3'], ['カード明細', 'd4'], ['請求先プロフィール', 'd5'], ['API access token', 'd6'], ['Webhook署名', 'd7'], ['取引データ import', 'd8'], ['unrelated weather', 'd1'], ['メンバー招待', 'd9'], ['操作履歴 export', 'd10'], ['復元できない削除', 'd11'], ['通知オフ', 'd12'], ['recipe for curry', 'd8'], ['duplicate invoice', 'd4'], ['not a payment question', 'd2'],
 ];
-const evaluationSeeds = querySeeds.slice(0, 50).map(([query, id]) => query === '取引データ import' ? ['recipe for curry', ''] : query === 'unrelated weather' ? [query, ''] : [query, id]);
+const evaluationSeeds = querySeeds.slice(0, 50).map(([query, id]) => query === '取引データ import' ? ['duplicate invoice', 'd4'] : query === 'unrelated weather' ? [query, ''] : query === 'alert preferences' ? ['unrelated preferences', ''] : [query, id]);
 export const evaluationQueries: EvaluationQuery[] = evaluationSeeds.map(([query, id], i) => ({ id: `q-${String(i + 1).padStart(2, '0')}`, query, labels: id ? { [id]: 3 } : {}, note: /unrelated|recipe/.test(query) ? 'unrelated' : /not|ではない|以外/.test(query) ? 'negation / intent contrast' : 'human-confirmed label' }));
 
 export function ndcg(results: SearchResult[], labels: Record<string, number>, k = 5) { const top = results.slice(0, k); const dcg = top.reduce((s, x, i) => s + ((labels[x.id] ?? 0) / Math.log2(i + 2)), 0); const ideal = Object.values(labels).sort((a, b) => b - a).slice(0, k).reduce((s, x, i) => s + x / Math.log2(i + 2), 0); return ideal ? dcg / ideal : 0; }
 export function mrr(results: SearchResult[], labels: Record<string, number>) { const hit = results.findIndex(x => (labels[x.id] ?? 0) > 0); return hit < 0 ? 0 : 1 / (hit + 1); }
-export function evaluate(mode: RankingMode) { let nd = 0, rr = 0, misses = 0, rerankErrors = 0; for (const q of evaluationQueries) { const candidates = retrieve(q.query); const result = rank(q.query, candidates, mode, q.labels); nd += ndcg(result, q.labels); rr += mrr(result, q.labels); const relevant = Object.keys(q.labels).some(id => !candidates.some(d => d.id === id)); if (relevant) misses++; else if (mode === 'replay' && result[0]?.relevance !== Math.max(...result.map(x => x.relevance))) rerankErrors++; } return { ndcg: Number((nd / evaluationQueries.length).toFixed(3)), mrr: Number((rr / evaluationQueries.length).toFixed(3)), candidateMisses: misses, rerankErrors, queries: evaluationQueries.length }; }
+export function evaluate(mode: RankingMode) { let nd = 0, rr = 0, misses = 0, rerankErrors = 0, evaluatedQueries = 0, noRelevantQueryCount = 0; for (const q of evaluationQueries) { const candidates = retrieve(q.query); const result = rank(q.query, candidates, mode, q.labels); const hasRelevance = Object.values(q.labels).some(value => value > 0); if (!hasRelevance) { noRelevantQueryCount++; continue; } evaluatedQueries++; nd += ndcg(result, q.labels); rr += mrr(result, q.labels); const relevant = Object.keys(q.labels).some(id => !candidates.some(d => d.id === id)); if (relevant) misses++; else if (mode === 'replay' && result[0]?.relevance !== Math.max(...result.map(x => x.relevance))) rerankErrors++; } return { ndcg: Number((nd / Math.max(1, evaluatedQueries)).toFixed(3)), mrr: Number((rr / Math.max(1, evaluatedQueries)).toFixed(3)), candidateMisses: misses, rerankErrors, queries: evaluationQueries.length, evaluatedQueries, noRelevantQueryCount, rejectionRate: Number((noRelevantQueryCount / evaluationQueries.length).toFixed(3)) }; }
 
 export const interactionSamples = [
   { label: 'Synonym', query: 'pwdを忘れた' }, { label: 'Negation', query: 'passwordではない請求書' }, { label: 'Abbreviation', query: '2FA setup' }, { label: '日本語 / English', query: 'Webhook署名' }, { label: 'Tie / duplicate', query: 'duplicate invoice' },

@@ -7,6 +7,7 @@ test('evaluation set contains 50 distinct human-labelled queries', () => {
   assert.equal(new Set(evaluationQueries.map(q => q.query)).size, 50);
   assert.ok(evaluationQueries.filter(q => q.note === 'unrelated').length >= 2);
   assert.ok(evaluationQueries.filter(q => q.note === 'unrelated').every(q => Object.keys(q.labels).length === 0));
+  assert.ok(evaluationQueries.some(q => q.query === 'duplicate invoice'));
 });
 
 test('replay reranks exactly retrieved candidates and exposes stable rank changes', () => {
@@ -31,6 +32,14 @@ test('evaluation labels do not leak into replay ranking features', () => {
   assert.deepEqual(withLabel.map(r => r.score), withWrongLabel.map(r => r.score));
 });
 
+test('evaluation labels make absent documents irrelevant while interactive mode stays lexical', () => {
+  const candidates = retrieve('invoice download');
+  const evaluated = rank('invoice download', candidates, 'baseline', {});
+  const interactive = rank('invoice download', candidates, 'baseline');
+  assert.ok(evaluated.every(row => row.relevance === 0));
+  assert.ok(interactive.some(row => row.relevance > 0));
+});
+
 test('metrics include both baseline and deterministic replay', () => {
   const baseline = evaluate('baseline');
   const replay = evaluate('replay');
@@ -38,4 +47,7 @@ test('metrics include both baseline and deterministic replay', () => {
   assert.equal(replay.queries, 50);
   assert.ok(replay.ndcg >= 0 && replay.ndcg <= 1);
   assert.ok(replay.mrr >= 0 && replay.mrr <= 1);
+  assert.equal(replay.noRelevantQueryCount, 2);
+  assert.equal(replay.evaluatedQueries, 48);
+  assert.equal(replay.rejectionRate, 0.04);
 });
