@@ -1,19 +1,21 @@
 'use client';
 
+import Link from 'next/link';
 import {FormEvent, useMemo, useState} from 'react';
 import {
   DISPLAY_COMPONENT_REGISTRY,
   LIVING_EVALUATION_CASES,
   LIVING_OPERATION_SAMPLES,
   LIVING_RECORDS,
+  reconcileHistorySelection,
   type DisplayComponentId,
+  type LivingHistoryEntry,
   type LivingRecord,
-  type LivingResolution,
   resolveLivingUi,
   validateComposition,
 } from '../../../lib/living-ui';
 
-type HistoryEntry = {prompt: string; resolution: LivingResolution};
+type HistoryEntry = LivingHistoryEntry;
 
 function priorityRank(priority: LivingRecord['priority']): number {
   return priority === '高' ? 0 : priority === '中' ? 1 : 2;
@@ -49,7 +51,7 @@ function TimelineDisplay({records}: {records: readonly LivingRecord[]}) {
 }
 
 function ChartDisplay({records}: {records: readonly LivingRecord[]}) {
-  return <div className="living-chart" role="img" aria-label="各仕事の進捗を表す棒グラフ">{records.map((record) => <div className="living-bar-row" key={record.id}><span title={record.id}>{record.title}</span><div className="living-bar-track"><div className="living-bar" style={{width: `${record.progress}%`}}><span>{record.progress}%</span></div></div></div>)}</div>;
+  return <div className="living-chart" role="img" aria-label="各仕事の時系列の進捗推移を表すチャート">{records.map((record) => <div className="living-trend-row" key={record.id}><strong title={record.id}>{record.title}</strong><div className="living-trend-points">{record.progressHistory.map((point) => <div className="living-trend-point" key={`${record.id}-${point.date}`}><span>{point.date}</span><div className="living-bar-track"><div className="living-bar" style={{width: `${point.value}%`}}><span>{point.value}%</span></div></div></div>)}</div></div>)}</div>;
 }
 
 const DISPLAY_RENDERERS: Record<DisplayComponentId, (props: {records: readonly LivingRecord[]}) => JSX.Element> = {
@@ -103,6 +105,15 @@ export default function LivingUiPage() {
     setNotice('履歴から前のビューを復元しました。');
   }
 
+  function selectHistorySnapshot(selectedIndex: number) {
+    const selection = reconcileHistorySelection(history, selectedIndex);
+    if (!selection) return;
+    setHistory(selection.history);
+    setCurrent(selection.current);
+    setPrompt(selection.current.prompt);
+    setNotice('履歴から前のビューを復元しました。');
+  }
+
   function replay() {
     const replayed = resolveLivingUi(current.prompt, LIVING_RECORDS);
     setCurrent({prompt: current.prompt, resolution: replayed});
@@ -118,6 +129,7 @@ export default function LivingUiPage() {
         <span className="eyebrow">PLT-4892 · Fixed replay lab</span>
         <h1>プロンプトで、<em>見え方</em>が変わる。</h1>
         <p>Living UI は、同じ固定レコードを意図に合わせた表示へ組み替える小さな実験です。選ばれた UI と元レコードの対応を、いつでも確認できます。</p>
+        <Link className="secondary living-eval-link" href="/pocs/living-ui/eval">50ケースの評価ページを見る →</Link>
       </div>
       <div className="living-hero-note"><strong>安全な実行境界</strong><span>固定データ · 固定ルール · 外部 API なし</span><span>表示は登録済みの 5 コンポーネントのみ</span><span>Jev live / 課金 / 書き込みは未使用</span></div>
     </section>
@@ -139,7 +151,7 @@ export default function LivingUiPage() {
 
         <section className="panel living-source-panel"><div className="living-panel-heading"><div><span className="living-component-kicker">04 · Provenance</span><h2>Original record correspondence</h2></div><span className="living-record-count">{resolution.records.length} records</span></div><p className="living-provenance-intro">表示の各要素は、下の固定レコード ID から派生しています。合成データの追加・変更や、根拠のない情報生成は行いません。</p><div className="living-provenance-grid">{resolution.records.map((record) => <div className="living-provenance-row" key={record.id} data-testid={`source-record-${record.id}`}><code>{record.id}</code><strong>{record.title}</strong><span>{record.owner} · {record.status} · {record.progress}%</span></div>)}</div></section>
 
-        {history.length > 0 && <section className="panel living-history-panel"><div className="living-panel-heading"><div><span className="living-component-kicker">View history</span><h2>前の表示を再生</h2></div><span className="living-record-count">{history.length} snapshots</span></div><div className="living-history-list">{history.slice().reverse().map((entry, index) => <button type="button" key={`${entry.prompt}-${index}`} onClick={() => {setCurrent(entry); setPrompt(entry.prompt); setNotice('履歴のスナップショットを表示しました。');}}><span>{entry.resolution.composition.intent}</span><strong>{entry.prompt}</strong><small>{entry.resolution.composition.components.join(' + ')}</small></button>)}</div></section>}
+        {history.length > 0 && <section className="panel living-history-panel"><div className="living-panel-heading"><div><span className="living-component-kicker">View history</span><h2>前の表示を再生</h2></div><span className="living-record-count">{history.length} snapshots</span></div><div className="living-history-list">{history.slice().reverse().map((entry, index) => <button type="button" key={`${entry.prompt}-${index}`} onClick={() => selectHistorySnapshot(history.length - 1 - index)}><span>{entry.resolution.composition.intent}</span><strong>{entry.prompt}</strong><small>{entry.resolution.composition.components.join(' + ')}</small></button>)}</div></section>}
       </section>
     </div>
   </div>;
