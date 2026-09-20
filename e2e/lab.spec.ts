@@ -102,6 +102,40 @@ test.describe('replay-only decision lab', () => {
     await expect(page.getByText('Trace replayed visually.')).toBeVisible();
   });
 
+  test('new decision PoCs expose fixed responses and 50-case evaluations', async ({ page }) => {
+    await page.goto('/pocs/model-routing');
+    await expect(page.getByRole('heading', { name: /依頼の重さに合わせて経路/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Run fixed response' }).click();
+    await expect(page.getByTestId('fixed-response')).toBeVisible();
+
+    await page.goto('/pocs/value-selection');
+    await expect(page.getByRole('heading', { name: /文書の中から選ぶ/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Run 50-case evaluation' }).click();
+    await expect(page.getByText('候補選択精度')).toBeVisible();
+
+    for (const [path, testId] of [
+      ['/pocs/paper-screening', 'paper-evaluation'],
+      ['/pocs/breakdown-check', 'breakdown-evaluation'],
+      ['/pocs/invoice-reconciliation', 'invoice-evaluation'],
+    ] as const) {
+      await page.goto(path);
+      await page.getByRole('button', { name: 'Run 50-case evaluation' }).click();
+      await expect(page.getByTestId(testId)).toBeVisible();
+    }
+  });
+
+  test('semantic lint and Evolution Arena keep code and evaluation boundaries visible', async ({ page }) => {
+    await page.goto('/pocs/semantic-lint');
+    await expect(page.getByRole('heading', { name: /意味のリスク/ })).toBeVisible();
+    await expect(page.getByText(/コンパイル・実行・修正・マージ/)).toBeVisible();
+    await page.getByRole('link', { name: '50-case evaluation' }).click();
+    await expect(page.getByRole('heading', { name: '固定応答・一括評価' })).toBeVisible();
+
+    await page.goto('/pocs/evolution-arena');
+    await expect(page.getByRole('heading', { name: /失敗traceから/ })).toBeVisible();
+    await expect(page.getByText(/環境・報酬・validator・実行コード/)).toBeVisible();
+  });
+
   test('Search reranking compares baseline and replay with fixed evaluation metrics', async ({ page }) => {
     await page.goto('/pocs/search-reranking');
     await expect(page.getByRole('heading', { name: '同じ候補を、もう一度並べる。' })).toBeVisible();
