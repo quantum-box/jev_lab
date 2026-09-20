@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import './globals.css';
 import './living-ui.css';
+import './search-reranking.css';
 
 export const metadata: Metadata = { title: 'JEV AI Decision Lab', description: '判断AI PoC gallery' };
 
