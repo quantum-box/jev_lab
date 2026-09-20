@@ -51,6 +51,12 @@ Jev liveは `app/api/playground/route.ts` のサーバー専用Route Handlerだ�
 
 `lib/runtime.ts` はPoCごとの `updateEnvironment`、`applyAction`、`validateAction` を受ける独立型コアです。Replay/Rule baselineはローカルで再現可能ですが、同じseedでもliveモデル出力の再現性は保証しません。Jev liveは明示選択した操作だけで `/api/runtime-lab` を経由し、`typesafe/jev-latest` に allowed action IDs のChoice、instructions、criteriaを送ります。未設定時はfallbackしません。
 
+## Tiny World (PLT-4890)
+
+`/pocs/tiny-world` は、12人の架空住民が8×6の合成世界で移動・採取・交易・協力するゲーム型PoCです。各判断に渡るのは住民本人の目的、近傍の可視事実、私的記憶、許可候補だけで、全体状態をそのまま入力しません。`lib/tiny-world.ts` の適用時検証は経路、同居、在庫、資源を再確認するため、失敗操作で二重消費されません。
+
+Normal / Scarcity / Bridge outage / Memory loss など固定seedの10シナリオ、Replay / Rule baseline、停止・1 step・reset・seed・trace replay、survival/resources/trade/cooperation/costの比較を表示します。Jev liveは明示選択しても既定では無効で、互換性とAPIキー・既存予算ゲートを満たす接続を追加するまでfallbackしません。固定seedはコードシミュレーションの再現性を示すだけで、liveモデル出力の再現性は保証しません。
+
 `data/evaluations.json` は schema/dataset version付きのリポジトリ固定fixtureです。初期8 PoCを含み、分類3件は tuning 30 / fixed 20、継続系5件は固定seedシナリオ10件です。期待ラベルは人手／ルールラベルであり、モデル出力をground truthにしません。CI・ローカル評価は Replay / Rule のみを使い、Jev liveは評価画面で明示的に選択した場合に限ります。
 
 `/runs` の履歴はブラウザlocalStorageだけに保存され、DBや外部送信はありません。JSON/CSV export、schema検証付きimport、個別実行の表示、全削除を提供します。評価指標は分類のaccuracy/coverage/error rate/confusion matrix、シナリオのcompletion/constraint/follow-through/p50/p95で、主観的品質とconfidenceは別扱いです。
@@ -64,11 +70,15 @@ Jev liveは `app/api/playground/route.ts` のサーバー専用Route Handlerだ�
 - `app/pocs/[slug]`: サンプル入力、実行可能／未実装の明示、折りたたみの実装情報。
 - `app/pocs/[slug]/eval`: loading/error/canceled/missing-key/unimplementedの状態契約を示すリプレイ画面。
 - `app/runs`: サンプル実行履歴の表示。
+- `app/pocs/tiny-world`: 住民の局所観測・地図・資源・経路・アクション履歴を分離して表示する専用ゲーム画面。
+- `lib/tiny-world.ts`: 合成世界、10シナリオ、局所観測、原子的なアクション検証、trace replay。
 
 ## New PoC template
 
 1. `lib/pocs.ts` の配列に `slug`, `title`, `description`, `category`, `decisionType`, `inputSchema`, `samples`, `specializedScreen`, `evaluationAdapter` を追加。
 2. 実行できる場合は `status: 'foreground'` と専用画面／評価アダプターを追加。固定リプレイで検証してからライブプロバイダーを接続する。
 3. `npm run typecheck && npm run build` を実行し、モバイル幅とキーボードで `/`, 詳細, `/eval`, `/runs` を確認する。
+
+Tiny Worldでは `/pocs/tiny-world` のシナリオ切り替え、住民クリック、開始/停止/1 step/reset/trace replay、失敗操作の記録も確認する。
 
 ゲーム・音声系の体験は、代替テキスト表示と視覚的な状態表示を必ず併記します。

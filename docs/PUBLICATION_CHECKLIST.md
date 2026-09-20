@@ -10,3 +10,5 @@ Use this checklist before sharing a preview or publishing the first eight replay
 - [ ] Game and audio experiences do not autoplay; visual and text alternatives are present.
 - [ ] No external side effects (payment, deletion, purchase, or production mutation) occur in replay/rule mode.
 - [ ] GitHub Actions CI is green. Hosting/shared preview remains intentionally unconfigured until a host is selected.
+- [ ] Tiny World remains synthetic-only: no real-person/social prediction, unlimited chat, or automatic Jev calls.
+- [ ] Tiny World local-visibility isolation, atomic resource/trade constraints, fixed-seed scenarios, trace replay, and gameplay E2E pass.

@@ -51,4 +51,17 @@ test.describe('replay-only decision lab', () => {
     await page.getByRole('button', { name: '1 step' }).click();
     await expect(page.locator('.trace-list')).toContainText('lag');
   });
+
+  test('Tiny World gameplay exposes local resident view and controls', async ({ page }) => {
+    await page.goto('/pocs/tiny-world');
+    await expect(page.getByRole('heading', { name: /12人の小さな世界/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Aoi resident-/ })).toBeVisible();
+    await page.getByRole('button', { name: '開始 / 1 step' }).click();
+    await expect(page.getByRole('heading', { name: /World map · tick 1/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Bram' }).click();
+    await expect(page.getByText('LOCAL VIEW · Bram')).toBeVisible();
+    await page.getByRole('button', { name: 'trace replay' }).click();
+    await page.getByRole('combobox', { name: 'Scenario' }).selectOption('memory-loss');
+    await expect(page.getByRole('button', { name: /Memory loss seed 41/ })).toBeVisible();
+  });
 });
