@@ -29,6 +29,8 @@ export function scenarioState(s: ArenaScenario): ArenaState { return { scenarioI
 export function distance(a:Point,b:Point){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y); }
 function blocked(p:Point,s:ArenaState){ return p.x<0||p.x>9||p.y<0||p.y>9||s.obstacles.some(o=>o.x===p.x&&o.y===p.y); }
 function move(p:Point,a:ArenaAction){ const d = a==='north'?point(0,-1):a==='south'?point(0,1):a==='east'?point(1,0):a==='west'?point(-1,0):point(0,0); return point(p.x+d.x,p.y+d.y); }
+function escortScenario(s:ArenaState){ return s.scenarioId.startsWith('protect-'); }
+function toward(from:Point,to:Point,s:ArenaState){ const options:Point[]=[]; if(from.x!==to.x) options.push(point(from.x+(from.x<to.x?1:-1),from.y)); if(from.y!==to.y) options.push(point(from.x,from.y+(from.y<to.y?1:-1))); return options.find(candidate=>!blocked(candidate,s))??from; }
 export function candidates(s:ArenaState,tactic:string):ArenaAction[] {
   const out:ArenaAction[]=[]; for(const a of arenaActions){ if(validateAction(s,a).ok) out.push(a); }
   if(tactic.toLowerCase().includes('守')||tactic.toLowerCase().includes('protect')) return out.sort((a,b)=>(a==='guard'? -1:0)-(b==='guard'?-1:0));
@@ -46,8 +48,9 @@ export function validateAction(s:ArenaState,a:ArenaAction):{ok:true}|{ok:false;r
 export function environment(s:ArenaState):ArenaState {
   if(s.outcome!=='running') return s;
   const enemy = s.enemy.x<s.hero.x?point(s.enemy.x+1,s.enemy.y):s.enemy.x>s.hero.x?point(s.enemy.x-1,s.enemy.y):s.enemy.y<s.hero.y?point(s.enemy.x,s.enemy.y+1):point(s.enemy.x,s.enemy.y-1);
-  let next = {...s, step:s.step+1, enemy:blocked(enemy,s)?s.enemy:enemy, guarding:false};
-  if(distance(next.enemy,next.ally)<=1){ const hit=next.guarding?0:1; next={...next,allyHealth:Math.max(0,next.allyHealth-hit),damageTaken:next.damageTaken+hit}; }
+  const ally=escortScenario(s)?toward(s.ally,s.exit,s):s.ally;
+  let next = {...s, step:s.step+1, ally, enemy:blocked(enemy,s)?s.enemy:enemy, guarding:false};
+  if(distance(next.enemy,next.ally)<=1){ const hit=s.guarding?0:1; next={...next,allyHealth:Math.max(0,next.allyHealth-hit),damageTaken:next.damageTaken+hit}; }
   if(next.health<=0||next.allyHealth<=0) next={...next,outcome:'defeat'};
   return next;
 }
@@ -58,15 +61,16 @@ export function applyAction(s:ArenaState,a:ArenaAction):ArenaState {
   if(a==='attack') n.enemyHealth=Math.max(0,n.enemyHealth-1);
   if(a==='guard') n.guarding=true;
   if(a==='heal'){ n.health=Math.min(5,n.health+2); n.item=null; }
-  if(n.enemyHealth<=0 || (n.hero.x===n.exit.x&&n.hero.y===n.exit.y&&n.ally.x===n.exit.x&&n.ally.y===n.exit.y)) n.outcome='victory';
+  const escorted=n.ally.x===n.exit.x&&n.ally.y===n.exit.y;
+  if(escortScenario(n)?escorted:n.enemyHealth<=0 || (n.hero.x===n.exit.x&&n.hero.y===n.exit.y&&escorted)) n.outcome='victory';
   return n;
 }
 export function createArenaRuntime(s:ArenaScenario,mode:'replay'|'rule'|'jev',tacticRef:{current:string},liveKeyRef:{current:string},onDecisionInput?:(input:ArenaDecisionInput)=>void) {
-  return new ContinuousRuntime<ArenaState,ArenaAction>({initialState:scenarioState(s),seed:s.seed,allowedActions:arenaActions,updateEnvironment:(state)=>environment(state),applyAction,validateAction,safeAction:'guard',adapterName:mode,decisionCadenceMs:500,caps:{maxSteps:24,maxElapsedMs:20_000,maxConcurrency:1},decide:async({snapshot,signal})=>{
+  return new ContinuousRuntime<ArenaState,ArenaAction>({initialState:scenarioState(s),seed:s.seed,allowedActions:arenaActions,updateEnvironment:(state)=>environment(state),applyAction,validateAction,isComplete:state=>state.outcome!=='running',safeAction:'guard',adapterName:mode,decisionCadenceMs:500,caps:{maxSteps:24,maxElapsedMs:20_000,maxConcurrency:1},decide:async({snapshot,signal})=>{
     const tactic=tacticRef.current; const cs=candidates(snapshot,tactic); onDecisionInput?.({step:snapshot.step,tactic,candidates:cs});
-    if(mode==='jev'){ const response=await fetch('/api/runtime-lab',{method:'POST',headers:{'content-type':'application/json','x-jev-live-access-key':liveKeyRef.current,'x-jev-request-id':crypto.randomUUID()},body:JSON.stringify({snapshot,actionIds:arenaActions,tactic}),signal}); const body=await response.json(); if(!response.ok) throw new Error(body.error??'Jev live failed'); return {action:body.action as ArenaAction}; }
+    if(mode==='jev'){ const response=await fetch('/api/runtime-lab',{method:'POST',headers:{'content-type':'application/json','x-jev-live-access-key':liveKeyRef.current,'x-jev-request-id':crypto.randomUUID()},body:JSON.stringify({snapshot,actionIds:arenaActions,tactic}),signal}); const body=await response.json(); if(!response.ok) throw new Error(body.error??'Jev live failed'); const usage=body.usage?.status==='measured'&&Number.isFinite(body.usage.inputTokens)&&Number.isFinite(body.usage.outputTokens)?{status:'measured' as const,inputTokens:body.usage.inputTokens,outputTokens:body.usage.outputTokens}:undefined; const cost=body.cost?.status==='measured'&&Number.isFinite(body.cost.nanodollars)?{status:'measured' as const,nanodollars:body.cost.nanodollars}:undefined; return {action:body.action as ArenaAction,usage,cost}; }
     let action:ArenaAction=cs[0]??'guard';
-    if(mode==='replay'){ if(snapshot.enemyHealth>0&&distance(snapshot.hero,snapshot.enemy)<=1) action='attack'; else if(snapshot.item&&distance(snapshot.hero,snapshot.item)===0) action='heal'; else if(snapshot.allyHealth<4) action='guard'; else action=cs.find(x=>['east','south','north','west'].includes(x))??'wait'; }
+    if(mode==='replay'){ if(snapshot.enemyHealth>0&&distance(snapshot.hero,snapshot.enemy)<=1) action='attack'; else if(snapshot.item&&distance(snapshot.hero,snapshot.item)===0) action='heal'; else if(snapshot.allyHealth<4) action='guard'; else action=(['east','south','north','west'] as ArenaAction[]).find(x=>cs.includes(x))??'wait'; }
     else { if(snapshot.item&&distance(snapshot.hero,snapshot.item)===0&&snapshot.health<5) action='heal'; else if(snapshot.enemyHealth>0&&distance(snapshot.hero,snapshot.enemy)<=1) action='attack'; else if(tactic.toLowerCase().includes('守')||tactic.toLowerCase().includes('protect')) action='guard'; else action=cs.find(x=>x==='east')??cs[0]??'wait'; }
     return {action};
   }});

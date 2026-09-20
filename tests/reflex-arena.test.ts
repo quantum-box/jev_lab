@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { arenaActions, applyAction, candidates, createArenaRuntime, scenarioState, scenarios, validateAction } from '../lib/reflex-arena';
+import { arenaActions, applyAction, candidates, createArenaRuntime, environment, scenarioState, scenarios, validateAction } from '../lib/reflex-arena';
 import { ContinuousRuntime } from '../lib/runtime';
 
 test('Reflex Arena ships ten fixed, distinct seeds', () => {
@@ -46,4 +46,30 @@ test('an invalid action does not teleport the hero', () => {
   const state = scenarioState(scenarios[0]);
   const next = applyAction(state, 'north');
   assert.notDeepEqual(next.hero, { x: 4, y: 4 });
+});
+
+test('guard protects the ally during the following environment tick', () => {
+  const state = { ...scenarioState(scenarios[0]), hero: { x: 9, y: 9 }, ally: { x: 2, y: 4 }, enemy: { x: 1, y: 4 }, guarding: true };
+  assert.equal(environment(state).allyHealth, state.allyHealth);
+});
+
+test('escort scenarios move the ally to the exit and cannot win by defeating the enemy', () => {
+  let state = { ...scenarioState(scenarios[2]), enemyHealth: 0 };
+  assert.equal(applyAction(state, 'wait').outcome, 'running');
+  for (let tick = 0; tick < 20; tick++) state = environment(state);
+  assert.deepEqual(state.ally, state.exit);
+  assert.equal(applyAction(state, 'wait').outcome, 'victory');
+});
+
+test('replay uses east as its first available movement priority', async () => {
+  const runtime = createArenaRuntime(scenarios[0], 'replay', { current: 'default' }, { current: '' });
+  runtime.start(); await runtime.tick(500);
+  assert.deepEqual(runtime.state.hero, { x: 2, y: 4 });
+});
+
+test('live decisions retain measured usage and cost', async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ action: 'east', usage: { status: 'measured', inputTokens: 12, outputTokens: 4 }, cost: { status: 'measured', nanodollars: 99 } }), { status: 200 });
+  try { const runtime = createArenaRuntime(scenarios[0], 'jev', { current: 'default' }, { current: 'ephemeral' }); await runtime.step(); assert.deepEqual(runtime.metrics.usage, { status: 'measured', inputTokens: 12, outputTokens: 4 }); assert.deepEqual(runtime.metrics.cost, { status: 'measured', nanodollars: 99 }); }
+  finally { globalThis.fetch = oldFetch; }
 });
