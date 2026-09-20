@@ -9,7 +9,15 @@ npm install
 npm run dev       # http://localhost:3000
 npm run typecheck
 npm run build
+npm run test:unit
+npm run test:e2e       # requires a local Chromium install
 ```
+
+## CI and preview policy
+
+GitHub Actions is configured for pull requests and pushes to `main`. It runs install, typecheck, lint, all unit/provider contract/runtime/evaluation/playground tests, a production build, and deterministic Playwright E2E using only replay/rule/fixed fixtures. CI has no `TACHYON_API_TOKEN`, tenant, or live access key. Playwright HTML reports, traces on failure, and test results are uploaded as workflow artifacts.
+
+Run the live smoke path only explicitly and outside CI after configuring a server-only API key, tenant, and finite budget. Never put raw keys in source, browser storage, logs, or CI fixtures; live mode must fail closed when auth, usage, or cost is unavailable. GitHub Actions is configured; hosting/shared preview intentionally remains unconfigured until the user selects a host. Pull requests are never auto-merged.
 
 外部APIキーや有料モデル呼び出しはありません。先頭8件は固定レスポンス／リプレイ体験、残り17件はComing soonのカタログ表示です。
 

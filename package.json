@@ -2,7 +2,30 @@
   "name": "jev-ai-decision-lab",
   "version": "0.1.0",
   "private": true,
-  "scripts": {"dev":"next dev","build":"next build","start":"next start","typecheck":"tsc --noEmit","lint":"next lint","test:contract":"tsx --test tests/judgments.test.ts","test:runtime":"tsx --test tests/runtime.test.ts"},
-  "dependencies": {"next":"14.2.15","react":"18.3.1","react-dom":"18.3.1"},
-  "devDependencies": {"@types/node":"20.16.5","@types/react":"18.3.5","@types/react-dom":"18.3.0","typescript":"5.6.2","eslint":"8.57.1","eslint-config-next":"14.2.15","tsx":"4.19.1"}
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "test:contract": "tsx --test tests/judgments.test.ts",
+    "test:runtime": "tsx --test tests/runtime.test.ts",
+    "test:unit": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "next": "14.2.15",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "@types/node": "20.16.5",
+    "@types/react": "18.3.5",
+    "@types/react-dom": "18.3.0",
+    "eslint": "8.57.1",
+    "eslint-config-next": "14.2.15",
+    "tsx": "4.19.1",
+    "typescript": "5.6.2"
+  }
 }

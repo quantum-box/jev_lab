@@ -1,0 +1,44 @@
+import { test, expect } from '@playwright/test';
+
+test.describe('replay-only decision lab', () => {
+  test('gallery -> PoC -> sample replay -> persisted history', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('link', { name: 'Reflex Arena' }).click();
+    await expect(page.getByRole('heading', { name: 'Reflex Arena' })).toBeVisible();
+    await page.getByRole('link', { name: 'Run sample replay' }).click();
+    await expect(page.getByRole('heading', { name: 'Sample evaluation' })).toBeVisible();
+    await page.getByRole('button', { name: 'Run sample' }).click();
+    await expect(page.getByTestId('sample-result')).toContainText('replay');
+    await page.getByRole('link', { name: 'Runs' }).click();
+    await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible();
+    await expect(page.locator('.run').first()).toContainText('replay');
+  });
+
+  test('live mode stays unauthorized without a key and never falls back', async ({ page }) => {
+    await page.goto('/pocs/reflex-arena/eval');
+    await page.getByRole('button', { name: 'Jev live' }).click();
+    await page.getByRole('button', { name: 'Run sample' }).click();
+    await expect(page.getByTestId('sample-result')).toContainText(/access|key|unauthorized|設定|認証/i);
+    await expect(page.getByTestId('sample-result')).not.toContainText('provider="replay"');
+  });
+
+  test('cancelled batch reports cancellation without applying stale output', async ({ page }) => {
+    await page.route('**/api/runs', async route => { await new Promise(resolve => setTimeout(resolve, 250)); await route.continue(); });
+    await page.goto('/pocs/accounting-category/eval');
+    await page.getByRole('button', { name: 'Start batch' }).click();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByTestId('eval-status')).toHaveText('canceled');
+    await expect(page.getByTestId('metrics')).not.toBeVisible();
+  });
+
+  test('Runtime Lab supports step, pause, and trace replay', async ({ page }) => {
+    await page.goto('/runtime-lab');
+    await page.getByRole('button', { name: '1 step' }).click();
+    await expect(page.getByTestId('runtime-status')).toHaveText('running');
+    await expect(page.getByTestId('runtime-trace')).toContainText('apply');
+    await page.getByRole('button', { name: '一時停止' }).click();
+    await expect(page.getByTestId('runtime-status')).toHaveText('paused');
+    await page.getByRole('button', { name: 'Replay trace' }).click();
+    await expect(page.getByTestId('replay-result')).toContainText('replayed');
+  });
+});
