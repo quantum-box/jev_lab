@@ -64,4 +64,18 @@ test.describe('replay-only decision lab', () => {
     await page.getByRole('combobox', { name: 'Scenario' }).selectOption('memory-loss');
     await expect(page.getByRole('button', { name: /Memory loss seed 41/ })).toBeVisible();
   });
+
+  test('AI DJ waits for Play, changes at a bar boundary, and can replay its trace', async ({ page }) => {
+    await page.goto('/pocs/ai-dj');
+    await expect(page.locator('h1')).toContainText('気分の変化を');
+    await expect(page.getByText('waiting for Play')).toBeVisible();
+    await page.getByLabel('Mood prompt').fill('夜の移動、街の光');
+    await page.getByRole('button', { name: '▶ Play' }).click();
+    await expect(page.getByText('LIVE', { exact: true })).toBeVisible();
+    await expect(page.locator('.dj-trace-row').first()).toBeVisible({ timeout: 5_000 });
+    await page.getByRole('button', { name: '■ Stop' }).click();
+    await expect(page.getByText('READY')).toBeVisible();
+    await page.getByRole('button', { name: 'Replay trace' }).click();
+    await expect(page.getByText('Trace replayed visually.')).toBeVisible();
+  });
 });
