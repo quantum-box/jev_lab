@@ -9,6 +9,7 @@ export type ArenaState = {
   obstacles: Point[]; guarding: boolean; outcome: ArenaOutcome; damageTaken: number;
 };
 export type ArenaScenario = { id: string; title: string; goal: string; seed: number; initial: Omit<ArenaState, 'scenarioId'|'step'|'outcome'|'damageTaken'|'guarding'> };
+export type ArenaDecisionInput = { step: number; tactic: string; candidates: ArenaAction[] };
 export const arenaActions: readonly ArenaAction[] = ['north','south','east','west','attack','guard','heal','wait'];
 const point = (x:number,y:number):Point => ({x,y});
 const base = (id:string,title:string,goal:string,seed:number,hero:Point,ally:Point,enemy:Point,exit:Point,item:Point|null,obstacles:Point[], health=5, allyHealth=5, enemyHealth=3):ArenaScenario => ({id,title,goal,seed,initial:{hero,ally,enemy,exit,item,obstacles,health,allyHealth,enemyHealth}});
@@ -60,12 +61,13 @@ export function applyAction(s:ArenaState,a:ArenaAction):ArenaState {
   if(n.enemyHealth<=0 || (n.hero.x===n.exit.x&&n.hero.y===n.exit.y&&n.ally.x===n.exit.x&&n.ally.y===n.exit.y)) n.outcome='victory';
   return n;
 }
-export function createArenaRuntime(s:ArenaScenario,mode:'replay'|'rule'|'jev',tacticRef:{current:string},liveKeyRef:{current:string}) {
+export function createArenaRuntime(s:ArenaScenario,mode:'replay'|'rule'|'jev',tacticRef:{current:string},liveKeyRef:{current:string},onDecisionInput?:(input:ArenaDecisionInput)=>void) {
   return new ContinuousRuntime<ArenaState,ArenaAction>({initialState:scenarioState(s),seed:s.seed,allowedActions:arenaActions,updateEnvironment:(state)=>environment(state),applyAction,validateAction,safeAction:'guard',adapterName:mode,decisionCadenceMs:500,caps:{maxSteps:24,maxElapsedMs:20_000,maxConcurrency:1},decide:async({snapshot,signal})=>{
-    if(mode==='jev'){ const response=await fetch('/api/runtime-lab',{method:'POST',headers:{'content-type':'application/json','x-jev-live-access-key':liveKeyRef.current,'x-jev-request-id':crypto.randomUUID()},body:JSON.stringify({snapshot,actionIds:arenaActions}),signal}); const body=await response.json(); if(!response.ok) throw new Error(body.error??'Jev live failed'); return {action:body.action as ArenaAction}; }
-    const cs=candidates(snapshot,tacticRef.current); let action:ArenaAction=cs[0]??'guard';
+    const tactic=tacticRef.current; const cs=candidates(snapshot,tactic); onDecisionInput?.({step:snapshot.step,tactic,candidates:cs});
+    if(mode==='jev'){ const response=await fetch('/api/runtime-lab',{method:'POST',headers:{'content-type':'application/json','x-jev-live-access-key':liveKeyRef.current,'x-jev-request-id':crypto.randomUUID()},body:JSON.stringify({snapshot,actionIds:arenaActions,tactic}),signal}); const body=await response.json(); if(!response.ok) throw new Error(body.error??'Jev live failed'); return {action:body.action as ArenaAction}; }
+    let action:ArenaAction=cs[0]??'guard';
     if(mode==='replay'){ if(snapshot.enemyHealth>0&&distance(snapshot.hero,snapshot.enemy)<=1) action='attack'; else if(snapshot.item&&distance(snapshot.hero,snapshot.item)===0) action='heal'; else if(snapshot.allyHealth<4) action='guard'; else action=cs.find(x=>['east','south','north','west'].includes(x))??'wait'; }
-    else { if(snapshot.item&&distance(snapshot.hero,snapshot.item)===0&&snapshot.health<5) action='heal'; else if(snapshot.enemyHealth>0&&distance(snapshot.hero,snapshot.enemy)<=1) action='attack'; else if(tacticRef.current.toLowerCase().includes('守')||tacticRef.current.toLowerCase().includes('protect')) action='guard'; else action=cs.find(x=>x==='east')??cs[0]??'wait'; }
+    else { if(snapshot.item&&distance(snapshot.hero,snapshot.item)===0&&snapshot.health<5) action='heal'; else if(snapshot.enemyHealth>0&&distance(snapshot.hero,snapshot.enemy)<=1) action='attack'; else if(tactic.toLowerCase().includes('守')||tactic.toLowerCase().includes('protect')) action='guard'; else action=cs.find(x=>x==='east')??cs[0]??'wait'; }
     return {action};
   }});
 }

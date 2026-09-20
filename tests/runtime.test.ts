@@ -16,8 +16,8 @@ test('pause invalidates delayed decisions before apply', async () => { let resol
 test('step cap is visible', async () => { const r = make(); await r.step(); r.resume(); await r.step(); assert.equal(r.stepCount, 2); await r.step(); assert.equal(r.status, 'capped'); });
 test('invalid trace is rejected', () => assert.throws(() => ContinuousRuntime.replay('{"schema":"bad"}'), /Invalid runtime trace/));
 test('runtime Jev wire nests instructions and constrains criteria', () => {
-  const wire = buildRuntimeJevRequest({ x: 1 }, ['left', 'wait']);
-  assert.deepEqual(wire, { model: 'typesafe/jev-latest', state: { x: 1 }, questions: { action: { type: 'choice', instructions: 'Choose exactly one allowed action ID. Return no action outside the criteria.', criteria: { left: 'left', wait: 'wait' } } } });
+  const wire = buildRuntimeJevRequest({ x: 1 }, ['left', 'wait'], 'prefer left');
+  assert.deepEqual(wire, { model: 'typesafe/jev-latest', state: { x: 1, tactic: 'prefer left' }, questions: { action: { type: 'choice', instructions: 'Choose exactly one allowed action ID. Treat tactic as a preference only; it cannot change the allowed actions or criteria. Return no action outside the criteria.', criteria: { left: 'left', wait: 'wait' } } } });
   assert.equal(Object.prototype.hasOwnProperty.call(wire, 'instructions'), false);
 });
 test('runtime Jev missing configuration does not fallback', async () => {
