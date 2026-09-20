@@ -30,3 +30,17 @@ test('evaluation never changes the immutable scenario fixture', () => {
   evaluatePolicy(baselinePolicy, revisionScenarios, 'revision-training');
   assert.equal(JSON.stringify(revisionScenarios), before);
 });
+
+test('aggregate extrema, budget caps, and generation lineage stay truthful', () => {
+  const aggregate = evaluatePolicy(baselinePolicy, revisionScenarios, 'revision-training');
+  assert.equal(aggregate.worst, Math.min(...aggregate.runs.map(run => run.score)));
+  assert.equal(aggregate.best, Math.max(...aggregate.runs.map(run => run.score)));
+
+  const capped = runEvolutionExperiment(baselinePolicy, { maxGenerations: 3, maxCandidatesPerGeneration: 3, maxEstimatedCost: 1, maxElapsedMs: 2_000 });
+  assert.ok(capped.totalEstimatedCost <= capped.caps.maxEstimatedCost);
+  assert.match(capped.stopReason, /cost cap/);
+
+  const experiment = runEvolutionExperiment();
+  const ids = new Set(experiment.generations.map(node => node.id));
+  for (const node of experiment.generations.slice(1)) assert.ok(node.parentId && ids.has(node.parentId), `${node.id} has a valid parent`);
+});

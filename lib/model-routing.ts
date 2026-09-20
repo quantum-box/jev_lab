@@ -110,6 +110,14 @@ function candidateFor(target: RouteTarget, candidates: Candidate[]) {
   return candidates.find(candidate => candidate.id === aliases[target]) ?? candidates.find(candidate => candidate.capabilities.some(capability => lower(capability).includes(lower(capabilityHint))));
 }
 
+const defaultRouteReason: Record<RouteTarget, string> = {
+  rules: '設定された既定経路としてルール処理を選択。',
+  light: '設定された既定経路として軽量モデルを選択。',
+  'high-performance': '設定された既定経路として高性能モデルを選択。',
+  'human-review': '設定された既定経路として人への確認に保留。',
+};
+const estimateCandidateCost = (candidate: Candidate | undefined, tokens: number) => candidate ? ((tokens / 1000) * candidate.inputCostPer1k + (Math.max(80, Math.ceil(tokens * 0.25)) / 1000) * candidate.outputCostPer1k) : 0;
+
 export function routeRequest(request: RequestProfile, candidates = defaultCandidates, criteria = defaultCriteria): RoutingDecision {
   const text = request.text.trim();
   const tokens = request.estimatedTokens ?? Math.max(20, Math.ceil(text.length * 1.5));
@@ -127,14 +135,20 @@ export function routeRequest(request: RequestProfile, candidates = defaultCandid
   ];
   let target: RouteTarget = criteria.defaultRoute;
   const flags: string[] = [];
-  let reason = '定型でも長い推論でもないため、軽量モデルを選択。';
+  let reason = defaultRouteReason[target];
   if (sensitive && criteria.sensitiveNeedsHuman) { target = 'human-review'; flags.push('機密'); reason = '機密性のある入力は自動モデルへ渡さず、人への確認に保留。'; }
   else if (incomplete && criteria.incompleteNeedsHuman) { target = 'human-review'; flags.push('情報不足'); reason = '不足情報を推測で補わず、人への確認に保留。'; }
   else if (ambiguous && criteria.ambiguityNeedsHuman) { target = 'human-review'; flags.push('曖昧'); reason = '解釈が複数あるため、人への確認に保留。'; }
   else if (!longReasoning && !needsTools && tokens <= criteria.maxLightTokens && hasAny(text, ['定型', '請求', '分類', '抽出', '一覧', 'summarize'])) { target = 'rules'; reason = '定型入力で制約が明確なため、ルール処理を選択。'; }
   else if (longReasoning || needsTools || tokens > criteria.maxLightTokens) { target = 'high-performance'; flags.push(longReasoning ? '長い推論' : 'ツール/文脈'); reason = '長い推論、ツール、または文脈量が軽量モデルの範囲を超えるため、高性能モデルを選択。'; }
-  const candidate = candidateFor(target, candidates);
-  const estimatedCost = candidate ? ((tokens / 1000) * candidate.inputCostPer1k + (Math.max(80, Math.ceil(tokens * 0.25)) / 1000) * candidate.outputCostPer1k) : 0;
+  let candidate = candidateFor(target, candidates);
+  if (target === 'light' && estimateCandidateCost(candidate, tokens) > criteria.maxLightCost) {
+    target = 'high-performance'; flags.push('軽量費用上限'); reason = '軽量モデルの見積費用が設定上限を超えるため、高性能モデルへ振り分け。'; candidate = candidateFor(target, candidates);
+  }
+  if (needsTools && target !== 'human-review' && !candidate?.supportsTools) {
+    target = 'human-review'; flags.push('ツール能力不足'); reason = '選択候補が要求されたツール能力を持たないため、人への確認に保留。'; candidate = candidateFor(target, candidates);
+  }
+  const estimatedCost = estimateCandidateCost(candidate, tokens);
   const confidence = target === 'human-review' ? 0.98 : target === 'rules' ? 0.94 : target === 'high-performance' ? 0.86 : 0.82;
   return { target, modelId: candidate?.id, modelLabel: candidate?.label, confidence, reason, flags, estimatedCost, judgmentItems: items };
 }

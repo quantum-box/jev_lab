@@ -62,7 +62,25 @@ perform_checked()?;
 Ok(())` },
 ];
 
-const codeOnly = (line: string) => line.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/, '').trim();
+function codeOnlyLines(lines: string[]): string[] {
+  let inBlockComment = false;
+  return lines.map(line => {
+    let output = '';
+    for (let index = 0; index < line.length;) {
+      if (inBlockComment) {
+        const end = line.indexOf('*/', index);
+        if (end === -1) return output.trim();
+        inBlockComment = false; index = end + 2; continue;
+      }
+      const blockStart = line.indexOf('/*', index);
+      const lineStart = line.indexOf('//', index);
+      if (lineStart !== -1 && (blockStart === -1 || lineStart < blockStart)) { output += line.slice(index, lineStart); break; }
+      if (blockStart === -1) { output += line.slice(index); break; }
+      output += line.slice(index, blockStart); inBlockComment = true; index = blockStart + 2;
+    }
+    return output.trim();
+  });
+}
 function hasContextGap(code: string, diff: string) {
   return /surrounding (?:code|context) omitted|周辺(?:情報|コード).*(?:不足|省略)|TODO:\s*inspect caller/i.test(code + '\n' + diff)
     || /\.\.\.|<\.\.\.|@@\s+-?\d+,?\d*\s+\+?\d+,?\d*\s+@@/.test(diff) && !/fn\s+\w+/.test(code);
@@ -74,7 +92,7 @@ function makeFinding(rule: SemanticLintRule, status: SemanticLintStatus, line: n
 export function analyzeSemanticLint(input: SemanticLintInput): SemanticLintResult {
   const rules = input.rules ?? semanticLintRules;
   const lines = input.code.split(/\r?\n/);
-  const clean = lines.map(codeOnly);
+  const clean = codeOnlyLines(lines);
   const findings: SemanticLintFinding[] = [];
   let ignoredCommentInstructions = 0;
   lines.forEach(line => { if (/\/\/|\/\*/.test(line) && /(ignore|follow|report|rule|規約|指示|無視)/i.test(line)) ignoredCommentInstructions++; });
@@ -125,7 +143,7 @@ const evalSeeds: Array<Omit<SemanticEvaluationCase, 'id'>> = [
 export const semanticEvaluationFixture: SemanticEvaluationCase[] = Array.from({ length: 50 }, (_, i) => ({ ...evalSeeds[i % evalSeeds.length], id: 'SL-' + String(i + 1).padStart(3, '0') }));
 
 export function keywordBaseline(code: string): SemanticLintStatus {
-  const text = code.split(/\r?\n/).map(codeOnly).join('\n');
+  const text = codeOnlyLines(code.split(/\r?\n/)).join('\n');
   if (/(?:let\s+_|\.ok\s*\(\s*\)|libloading|openssl|success|succeeded)/i.test(text)) return 'suspected_violation';
   if (/surrounding|周辺|\.\.\./i.test(text)) return 'insufficient_information';
   return 'no_issue_detected';

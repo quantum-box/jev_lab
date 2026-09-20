@@ -129,7 +129,7 @@ export function evaluatePolicy(policy: ArenaPolicy, fixtures: ArenaScenario[], p
   const scores = runs.map(run => run.score);
   const meanScore = scores.reduce((sum, value) => sum + value, 0) / Math.max(1, scores.length);
   const variance = scores.reduce((sum, value) => sum + (value - meanScore) ** 2, 0) / Math.max(1, scores.length);
-  return { purpose, seeds: fixtures.map(scenario => scenario.seed), wins: runs.filter(run => run.outcome === 'victory').length, meanScore, variance, best: Math.max(...scores, 0), worst: Math.min(...scores, 0), estimatedCost: runs.reduce((sum, run) => sum + 1 + run.steps / 24, 0), runs };
+  return { purpose, seeds: fixtures.map(scenario => scenario.seed), wins: runs.filter(run => run.outcome === 'victory').length, meanScore, variance, best: scores.length ? Math.max(...scores) : 0, worst: scores.length ? Math.min(...scores) : 0, estimatedCost: runs.reduce((sum, run) => sum + 1 + run.steps / 24, 0), runs };
 }
 
 export function policyDiff(before: ArenaPolicy, after: ArenaPolicy): string[] {
@@ -163,29 +163,35 @@ export function runEvolutionExperiment(initialPolicy = baselinePolicy, caps: Evo
   if (!assertSeedSeparation()) throw new Error('evaluation seed separation violated');
   const started = Date.now();
   const generations: GenerationNode[] = [];
+  const costCeiling = (fixtures: ArenaScenario[]) => fixtures.length * 2;
+  const emptyScore = (fixtures: ArenaScenario[], purpose: EvaluationPurpose): AggregateScore => ({ purpose, seeds: fixtures.map(scenario => scenario.seed), wins: 0, meanScore: 0, variance: 0, best: 0, worst: 0, estimatedCost: 0, runs: [] });
   let current = initialPolicy;
-  let currentTraining = evaluatePolicy(current, revisionScenarios, 'revision-training');
-  let totalCost = currentTraining.estimatedCost;
+  let totalCost = 0;
+  let currentTraining = emptyScore(revisionScenarios, 'revision-training');
+  if (costCeiling(revisionScenarios) <= caps.maxEstimatedCost) { currentTraining = evaluatePolicy(current, revisionScenarios, 'revision-training'); totalCost = currentTraining.estimatedCost; }
   generations.push({ id: 'generation-0', generation: 0, parentId: null, policy: current, policyDiff: ['baseline: no revision'], training: currentTraining, disposition: 'baseline', reason: '固定方針の基準値' });
-  let stopped = false;
-  let stopReason = '';
+  let acceptedNodeId = 'generation-0';
+  let stopped = currentTraining.runs.length === 0;
+  let stopReason = stopped ? 'estimated cost cap prevents baseline evaluation' : '';
   for (let generation = 1; generation <= caps.maxGenerations; generation++) {
+    if (stopped) break;
     if (Date.now() - started > caps.maxElapsedMs || totalCost >= caps.maxEstimatedCost) { stopped = true; stopReason = 'cap reached before candidate generation'; break; }
     const proposed = candidatesFromFailures(current, currentTraining).slice(0, caps.maxCandidatesPerGeneration);
     let accepted: { policy: ArenaPolicy; training: AggregateScore; diff: string[] } | null = null;
     for (const candidate of proposed) {
+      if (totalCost + costCeiling(revisionScenarios) > caps.maxEstimatedCost) { stopped = true; stopReason = 'estimated cost cap reached before candidate evaluation'; break; }
       const training = evaluatePolicy(candidate, revisionScenarios, 'revision-training');
       totalCost += training.estimatedCost;
       const diff = policyDiff(current, candidate);
       if (!accepted || scoreIsImprovement(training, accepted.training)) accepted = { policy: candidate, training, diff };
-      generations.push({ id: 'generation-' + generation + '-' + candidate.id, generation, parentId: 'generation-' + (generation - 1), policy: candidate, policyDiff: diff, training, disposition: 'candidate', reason: 'failure trace からの決定的候補' });
+      generations.push({ id: 'generation-' + generation + '-' + candidate.id, generation, parentId: acceptedNodeId, policy: candidate, policyDiff: diff, training, disposition: 'candidate', reason: 'failure trace からの決定的候補' });
       if (totalCost >= caps.maxEstimatedCost) { stopped = true; stopReason = 'estimated cost cap reached'; break; }
     }
     if (!accepted) { stopped = true; stopReason = 'no candidate available'; break; }
     if (scoreIsImprovement(accepted.training, currentTraining)) {
       current = accepted.policy; currentTraining = accepted.training;
       const node = generations.find(item => item.policy.id === current.id);
-      if (node) { node.disposition = 'accepted'; node.reason = '訓練セットで改善。次世代へ進む'; }
+      if (node) { node.disposition = 'accepted'; node.reason = '訓練セットで改善。次世代へ進む'; acceptedNodeId = node.id; }
     } else {
       const node = generations.find(item => item.policy.id === accepted!.policy.id);
       if (node) { node.disposition = 'rollback'; node.reason = '改善なし／悪化のため baseline に rollback'; }
@@ -193,12 +199,12 @@ export function runEvolutionExperiment(initialPolicy = baselinePolicy, caps: Evo
     }
   }
   const selected = generations.filter(node => node.disposition === 'accepted').at(-1) ?? generations[0];
-  selected.selection = evaluatePolicy(selected.policy, selectionHoldoutScenarios, 'selection-holdout');
-  selected.final = evaluatePolicy(selected.policy, finalUnusedScenarios, 'final-unused');
-  totalCost += (selected.selection?.estimatedCost ?? 0) + (selected.final?.estimatedCost ?? 0);
+  if (totalCost + costCeiling(selectionHoldoutScenarios) <= caps.maxEstimatedCost) { selected.selection = evaluatePolicy(selected.policy, selectionHoldoutScenarios, 'selection-holdout'); totalCost += selected.selection.estimatedCost; }
+  else { stopped = true; stopReason ||= 'estimated cost cap prevents selection evaluation'; }
+  if (totalCost + costCeiling(finalUnusedScenarios) <= caps.maxEstimatedCost) { selected.final = evaluatePolicy(selected.policy, finalUnusedScenarios, 'final-unused'); totalCost += selected.final.estimatedCost; }
+  else { stopped = true; stopReason ||= 'estimated cost cap prevents final evaluation'; }
   const elapsedMs = Date.now() - started;
   return { schema: 'jev-evolution-arena-experiment', version: 1, caps, revisionSeedIds: revisionScenarios.map(scenario => scenario.id), selectionSeedIds: selectionHoldoutScenarios.map(scenario => scenario.id), finalUnusedSeedIds: finalUnusedScenarios.map(scenario => scenario.id), generations, selectedPolicyId: selected.policy.id, stopped: stopped || generations.length > caps.maxGenerations, stopReason: stopReason || (generations.length > caps.maxGenerations ? 'generation cap reached' : 'experiment completed'), totalEstimatedCost: totalCost, elapsedMs, claims: ['この固定実験の結果は、一般的な自己改善を意味しない。', '改善なし・退化・ばらつきも有効な実験記録として保存する。', '最終未使用セットは候補生成・選別に使っていない。'] };
 }
 
 export const evolutionFixedExperiment = runEvolutionExperiment();
-

@@ -28,3 +28,8 @@ test('fixed evaluation has 50 cases and reports comparison metrics', () => {
   assert.ok(metrics.precision >= 0 && metrics.recall >= 0);
   assert.ok('falsePositive' in metrics.baseline && 'falseNegative' in metrics.baseline);
 });
+
+test('multiline block comments never become executable findings', () => {
+  const result = analyzeSemanticLint({ code: 'fn safe() {\n/*\nlet _ = write_file();\nuse forbidden_crate;\n*/\nperform_checked()?;\n}', diff: '' });
+  assert.equal(result.overall, 'no_issue_detected');
+});

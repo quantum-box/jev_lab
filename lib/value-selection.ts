@@ -66,7 +66,9 @@ function normalizeDate(raw: string) {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
 }
 function normalizeAmount(raw: string, currency?: string) {
-  const value = Number(raw.replaceAll(',', '').replace('−', '-'));
+  const negative = /[-−]/.test(raw);
+  const magnitude = Number(raw.replaceAll(',', '').replace(/[^\d.]/g, ''));
+  const value = negative ? -magnitude : magnitude;
   if (!Number.isFinite(value)) return null;
   return `${currency ?? 'UNIT'} ${value.toFixed(2)}`;
 }
@@ -76,12 +78,15 @@ export function extractValueCandidates(text: string): ValueCandidate[] {
   amountPattern.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = amountPattern.exec(text))) {
-    const start = match.index;
-    const end = start + match[0].length;
-    if (!isAmountBoundary(text, start, end)) continue;
-    const currency = currencyAt(text, start, end);
-    const normalized = normalizeAmount(match[0], currency);
-    if (normalized) candidates.push({ id: `amount-${candidates.filter(item => item.kind === 'amount').length + 1}`, kind: 'amount', raw: match[0], normalized, start, end, currency, label: contextLabel(text, start, totalWords) || '未ラベル', valid: true });
+    const prefix = text.slice(Math.max(0, match.index - 10), match.index);
+    const signedCurrency = prefix.match(/[-−]\s*(?:USD|EUR|GBP|[$€£￥¥])\s*$/i)?.[0] ?? '';
+    const start = match.index - signedCurrency.length;
+    const sourceEnd = match.index + match[0].length;
+    if (!isAmountBoundary(text, start, sourceEnd)) continue;
+    const currency = currencyAt(text, start, sourceEnd);
+    const raw = text.slice(start, sourceEnd);
+    const normalized = normalizeAmount(raw, currency);
+    if (normalized) candidates.push({ id: `amount-${candidates.filter(item => item.kind === 'amount').length + 1}`, kind: 'amount', raw, normalized, start, end: sourceEnd, currency, label: contextLabel(text, start, totalWords) || '未ラベル', valid: true });
   }
   datePattern.lastIndex = 0;
   while ((match = datePattern.exec(text))) {
@@ -149,7 +154,7 @@ export function selectionMetrics(cases: SelectionEvaluationCase[], selector = se
   for (const item of cases) {
     const candidates = extractValueCandidates(item.text);
     for (const [target, expectedValue, present] of [['invoice-total', item.expectedTotal, item.totalPresent], ['payment-due', item.expectedDue, item.duePresent] as const]) {
-      if (!present) continue;
+      if (!present) { holds++; continue; }
       expected++;
       const words = target === 'invoice-total' ? totalWords : dueWords;
       const kind = target === 'invoice-total' ? 'amount' : 'date';
@@ -164,7 +169,6 @@ export function selectionMetrics(cases: SelectionEvaluationCase[], selector = se
       if (selected.status === 'unknown') { holds++; selectionMisses++; continue; }
       if (selected.value !== expectedValue) selectionMisses++;
     }
-    if (item.expectedTotal === null || item.expectedDue === null) holds++;
   }
   return { selectionAccuracy: expected ? (expected - extractedMisses - selectionMisses) / expected : 0, extractionMissRate: expected ? extractedMisses / expected : 0, selectionMissRate: expected ? selectionMisses / expected : 0, holdRate: cases.length ? holds / (cases.length * 2) : 0, cost: cases.length * 0.0002 };
 }

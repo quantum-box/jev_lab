@@ -56,7 +56,7 @@ function evidenceFor(fixture: InvoiceFixture, key: CheckKey): Evidence[] {
   if (key === 'duplicate') return [by(inv.sourceLabel, `duplicate key ${inv.duplicateKey}`, inv.sourceUrl), by(po.sourceLabel, `duplicate key ${po.duplicateKey}`, po.sourceUrl)];
   if (key === 'amount') return [by(inv.sourceLabel, `${inv.subtotal} + tax ${inv.tax} = ${inv.total}`, inv.sourceUrl), by(po.sourceLabel, `order amount ${po.amount}`, po.sourceUrl)];
   if (key === 'date') return [by(inv.sourceLabel, `issue date ${inv.issueDate}`, inv.sourceUrl), by(po.sourceLabel, `ordered date ${po.orderedDate}`, po.sourceUrl)];
-  if (key === 'items') return [by(inv.sourceLabel, inv.items[0]?.evidence ?? 'item line unavailable', inv.sourceUrl), by(po.sourceLabel, po.items[0]?.evidence ?? 'item line unavailable', po.sourceUrl)];
+  if (key === 'items') return [by(inv.sourceLabel, inv.items.map(item => `${item.sku}: ${item.evidence}`).join(' / ') || 'item line unavailable', inv.sourceUrl), by(po.sourceLabel, po.items.map(item => `${item.sku}: ${item.evidence}`).join(' / ') || 'item line unavailable', po.sourceUrl)];
   if (key === 'delivery') return del ? [by(del.sourceLabel, del.scope, del.sourceUrl), by(inv.sourceLabel, `invoice quantity ${inv.items[0]?.quantity ?? 'unknown'}`, inv.sourceUrl)] : [by(inv.sourceLabel, 'delivery evidence not attached', inv.sourceUrl)];
   return app ? [by(app.sourceLabel, app.condition, app.sourceUrl)] : [by(inv.sourceLabel, 'approval evidence not attached', inv.sourceUrl)];
 }
@@ -72,7 +72,11 @@ export function reconcileInvoice(fixture: InvoiceFixture): ReconciliationResult 
   const arithmeticOk = inv.subtotal + inv.tax === inv.total; const amountOk = arithmeticOk && inv.subtotal === po.amount;
   checks.push(result('amount', amountOk ? 'match' : 'mismatch', fixture, !arithmeticOk ? '金額・税の算術が一致しない' : amountOk ? '金額と税の算術、および発注額が一致' : '算術は正しいが発注額と一致しない'));
   checks.push(result('date', inv.issueDate >= po.orderedDate ? 'match' : 'mismatch', fixture, inv.issueDate >= po.orderedDate ? '請求日が発注日以降' : '請求日が発注日より前'));
-  const itemMatch = po.items.length > 0 && inv.items.length > 0 && inv.items[0].sku === po.items[0].sku && /license|ライセンス|分析/u.test(`${inv.items[0].label} ${po.items[0].label}`);
+  const normalizeLabel = (value: string) => value.normalize('NFKC').toLocaleLowerCase('ja-JP').replace(/\s+/g, ' ').trim();
+  const itemMatch = po.items.length > 0 && inv.items.length === po.items.length && inv.items.every(invoiceItem => {
+    const orderedItem = po.items.find(item => item.sku === invoiceItem.sku);
+    return Boolean(orderedItem && orderedItem.quantity === invoiceItem.quantity && normalizeLabel(orderedItem.label) === normalizeLabel(invoiceItem.label));
+  });
   checks.push(result('items', itemMatch ? 'match' : 'mismatch', fixture, itemMatch ? '品目名・SKUの意味照合が一致' : '品目またはSKUの意味が一致しない'));
   if (!del) checks.push(result('delivery', 'unknown', fixture, '納品記録が添付されていない', ['納品記録']));
   else { const expected = inv.items[0]?.quantity ?? 0; const delivered = del.items[0]?.deliveredQuantity ?? del.items[0]?.quantity ?? 0; checks.push(result('delivery', delivered === expected ? 'match' : 'mismatch', fixture, delivered === expected ? '納品数量が請求数量と一致' : `納品数量 ${delivered} と請求数量 ${expected} が不一致`)); }
@@ -80,7 +84,7 @@ export function reconcileInvoice(fixture: InvoiceFixture): ReconciliationResult 
   else if (app.status === 'pending') checks.push(result('approval', 'unknown', fixture, '承認条件はあるが承認済み記録がない', ['承認済み記録']));
   else { const conditionOk = !(inv.total > 10000 && /10,000円以下/.test(app.condition)); checks.push(result('approval', !conditionOk ? 'mismatch' : app.approvedBy ? 'match' : 'unknown', fixture, !conditionOk ? '請求合計が承認上限を超過' : app.approvedBy ? `承認者 ${app.approvedBy} を確認` : '承認者が不明')); }
   const missingMaterials = [...new Set(checks.flatMap(check => check.missing))];
-  const outcome: ReconciliationOutcome = missingMaterials.length || checks.some(check => check.status === 'unknown') ? 'materials-missing' : checks.some(check => check.status === 'mismatch') ? 'correction-candidate' : app?.status === 'pending' ? 'approval-pending' : 'draft';
+  const outcome: ReconciliationOutcome = app?.status === 'pending' ? 'approval-pending' : missingMaterials.length || checks.some(check => check.status === 'unknown') ? 'materials-missing' : checks.some(check => check.status === 'mismatch') ? 'correction-candidate' : 'draft';
   return { fixture, checks, outcome, missingMaterials, mode: 'jev-fixed-simulation' };
 }
 

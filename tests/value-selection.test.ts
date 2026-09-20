@@ -36,5 +36,12 @@ test('evaluation has 50 cases and separates extraction and selection metrics', (
   assert.equal(Number.isFinite(metrics.extractionMissRate), true);
   assert.equal(Number.isFinite(metrics.selectionMissRate), true);
   assert.equal(Number.isFinite(metrics.holdRate), true);
+  assert.equal(metrics.holdRate, 0.2);
 });
 
+test('negative signs before currency markers are preserved', () => {
+  const text = '請求総額 -¥20\nTotal -USD 20.00';
+  const amounts = extractValueCandidates(text).filter(candidate => candidate.kind === 'amount');
+  assert.deepEqual(amounts.map(candidate => candidate.normalized), ['JPY -20.00', 'USD -20.00']);
+  assert.deepEqual(amounts.map(candidate => text.slice(candidate.start, candidate.end)), ['-¥20', '-USD 20.00']);
+});
