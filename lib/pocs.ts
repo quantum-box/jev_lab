@@ -16,12 +16,12 @@ const seeds: Seed[] = [
  ['model-routing','モデルルーター','業務','Recommend','リクエスト + コスト/品質制約','要求に適したモデル経路を選ぶ','Router matrix','routing-v1'],
  ['invoice-reconciliation','請求書の事前照合','業務','Classify','請求書 + 発注/納品記録 + 承認条件','請求書・発注・納品・承認条件を項目別に照合する','Invoice desk','invoice-reconciliation-v1'],
  ['value-selection','文書からの金額・日付選択','業務','Classify','文書本文 + 抽出スキーマ','文書中の候補から金額と日付を選ぶ','Extraction view','extraction-v1'],
- ['master-matching','取引先・商品マスタの照合','業務','Classify','入力行 + マスタ候補','取引先・商品の候補を照合する','Match table','matching-v1'],
- ['answer-evidence-check','回答と根拠の整合性チェック','業務','Explain','回答 + 根拠文書','回答が根拠と整合するか検査する','Evidence panel','grounding-v1'],
+ ['entity-matching','取引先・商品マスタの照合','業務','Classify','入力行 + マスタ候補','取引先・商品の候補を照合する','Match table','matching-v1'],
+ ['evidence-check','回答と根拠の整合性チェック','業務','Explain','回答 + 根拠文書','回答が根拠と整合するか検査する','Evidence panel','grounding-v1'],
  ['tool-call-check','ツール呼び出しチェック','業務','Classify','ツール呼び出し列 + 許可仕様','ツール呼び出しの妥当性を検査する','Call trace','tool-safety-v1'],
- ['task-goal-linking','タスクと目標の関連付け','業務','Prioritize','タスク + 目標一覧','タスクがどの目標に寄与するか整理する','Goal graph','linking-v1'],
+ ['goal-linking','タスクと目標の関連付け','業務','Prioritize','タスク + 目標一覧','タスクがどの目標に寄与するか整理する','Goal graph','linking-v1'],
  ['breakdown-check','分解不足チェック','業務','Explain','目標ツリー + タスク群 + 必要観点','検証・公開・依存解消など、計画の観点別coverageを確認する','Coverage tree','breakdown-coverage-v1'],
- ['incident-log','障害ログの分類と手順選択','業務','Recommend','障害ログ + 手順書','障害を分類し対応手順を選ぶ','Incident desk','runbook-v1'],
+ ['incident-triage','障害ログの分類と手順選択','業務','Recommend','障害ログ + 手順書','障害を分類し対応手順を選ぶ','Incident desk','runbook-v1'],
  ['paper-screening','論文スクリーニング','研究・実験','Classify','論文要旨 + 採択基準','研究レビューの候補をスクリーニングする','Paper queue','screening-v1'],
  ['demand-signals','需要シグナルの抽出','業務','Explain','時系列 + 外部シグナル','需要変化の兆候を抽出する','Signal chart','signal-v1'],
  ['ai-theater','AI Theater','研究・実験','Simulate','登場人物 + シーン制約','複数エージェントの舞台上の相互作用を観察','Stage view','theater-replay-v1'],
@@ -30,7 +30,7 @@ const seeds: Seed[] = [
  ['swarm-studio','Swarm Studio','研究・実験','Simulate','エージェント群 + 目的','群れの協調と分業を観察する','Swarm canvas','swarm-replay-v1'],
  ['evolution-arena','Evolution Arena','研究・実験','Simulate','個体群 + 評価関数','進化する戦略の世代推移を再生する','Evolution board','evolution-replay-v1'],
 ];
-const newlyImplemented = new Set(['semantic-lint', 'model-routing', 'invoice-reconciliation', 'value-selection', 'breakdown-check', 'paper-screening', 'evolution-arena']);
+const newlyImplemented = new Set(['semantic-lint', 'model-routing', 'invoice-reconciliation', 'value-selection', 'entity-matching', 'evidence-check', 'tool-call-check', 'goal-linking', 'breakdown-check', 'incident-triage', 'paper-screening', 'demand-signals', 'ai-theater', 'rumor-lab', 'black-box-scientist', 'swarm-studio', 'evolution-arena']);
 export const pocs: Poc[] = seeds.map(([slug,title,category,decisionType,inputSchema,sample,screen,adapter],i)=>({slug,title,description:`${title}の判断プロセスを、入力・出力・評価方法と一緒に確認します。`,category,decisionType,status:i<8||newlyImplemented.has(slug)?'foreground':'coming-soon',inputSchema,samples:[sample,'安全なデフォルト入力'],specializedScreen:screen,evaluationAdapter:adapter}));
 export const categories: Array<'All'|Category> = ['All','業務','ゲーム・自律世界','創作・UI','研究・実験'];
 export function getPoc(slug:string):Poc{return pocs.find(p=>p.slug===slug) as Poc}

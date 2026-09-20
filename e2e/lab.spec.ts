@@ -151,4 +151,35 @@ test.describe('replay-only decision lab', () => {
     await expect(page.getByTestId('baseline-mrr')).toHaveText(/0\.\d+|1/);
     await expect(page.getByTestId('replay-mrr')).toHaveText(/0\.\d+|1/);
   });
+
+  test('remaining decision and experiment PoCs expose dedicated runnable screens', async ({ page }) => {
+    for (const path of [
+      '/pocs/entity-matching',
+      '/pocs/evidence-check',
+      '/pocs/tool-call-check',
+      '/pocs/goal-linking',
+      '/pocs/incident-triage',
+      '/pocs/demand-signals',
+      '/pocs/ai-theater',
+      '/pocs/rumor-lab',
+      '/pocs/black-box-scientist',
+      '/pocs/swarm-studio',
+    ]) {
+      await page.goto(path);
+      await expect(page.locator('h1')).toBeVisible();
+      await expect(page.getByRole('link', { name: '← Back to gallery' })).toBeVisible();
+    }
+
+    await page.goto('/pocs/rumor-lab');
+    await page.getByRole('button', { name: 'リプレイ' }).click();
+    await expect(page.getByRole('heading', { name: '伝播グラフ' })).toBeVisible();
+
+    await page.goto('/pocs/black-box-scientist');
+    await page.getByRole('button', { name: '同じ条件でリプレイ' }).click();
+    await expect(page.getByRole('heading', { name: '仮説候補と実験履歴' })).toBeVisible();
+
+    await page.goto('/pocs/swarm-studio');
+    await page.getByRole('button', { name: '1 step' }).click();
+    await expect(page.getByText('step').first()).toBeVisible();
+  });
 });
