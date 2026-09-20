@@ -109,6 +109,13 @@ export type BrowserMetrics = {
   cost: { status: 'unavailable' };
 };
 
+export type BrowserTraceEnvelope = {
+  schema: 'browser-olympics-trace';
+  version: 1;
+  taskId: BrowserTaskId;
+  events: BrowserTraceEvent[];
+};
+
 export type BrowserStepResult = {
   accepted: boolean;
   action: BrowserAction;
@@ -198,6 +205,30 @@ function valuesFor(state: BrowserState): BrowserAction[] {
   ];
 }
 
+function productResults(state: BrowserState): Product[] {
+  const query = state.query.trim().toLowerCase();
+  const filtered = products.filter((product) =>
+    (!query || product.name.toLowerCase().includes(query)) &&
+    (state.category === 'all' || product.category === state.category),
+  );
+  if (state.sort === 'price-low') return [...filtered].sort((a, b) => Number(a.price.replace(/[^0-9]/g, '')) - Number(b.price.replace(/[^0-9]/g, '')));
+  return filtered;
+}
+
+function bookResults(state: BrowserState): Book[] {
+  const query = state.query.trim().toLowerCase();
+  const filtered = books.filter((book) =>
+    (!query || `${book.title} ${book.author}`.toLowerCase().includes(query)) &&
+    (state.availability === 'all' || (state.availability === 'available' && book.available)),
+  );
+  if (state.sort === 'recent') {
+    const recentOrder = ['book-solaris', 'book-metamorphosis', 'book-little-prince'];
+    return [...filtered].sort((a, b) => recentOrder.indexOf(a.id) - recentOrder.indexOf(b.id));
+  }
+  if (state.sort === 'title') return [...filtered].sort((a, b) => a.title.localeCompare(b.title));
+  return filtered;
+}
+
 /**
  * Hard capability allowlist.  It is intentionally independent of page text,
  * DOM attributes, or an action supplied by a model.
@@ -221,12 +252,12 @@ export function candidateActions(state: BrowserState): BrowserAction[] {
   const allowed = valuesFor(state);
   const task = getBrowserTask(state.taskId)!;
   if (task.id === 'ec-search' && !state.query) candidates.push(allowed[0]);
-  else if (task.id === 'ec-search' && !state.selectedId) candidates.push(allowed.find((a) => a.target === 'product:ec-green-tea')!);
+  else if (task.id === 'ec-search' && !state.selectedId) { const target = allowed.find((a) => a.target === 'product:ec-green-tea'); if (productResults(state).some((product) => product.id === 'ec-green-tea') && target) candidates.push(target); }
   else if (task.id === 'ec-filter' && state.category !== 'stationery') candidates.push(allowed.find((a) => a.target === 'category' && a.value === 'stationery')!);
   else if (task.id === 'ec-sort' && state.sort !== 'price-low') candidates.push(allowed.find((a) => a.target === 'sort' && a.value === 'price-low')!);
   else if (task.id === 'ec-inspect' && !state.selectedId) candidates.push(allowed.find((a) => a.target === 'product:ec-mug')!);
   else if (task.id === 'library-search' && !state.query) candidates.push(allowed.find((a) => a.target === 'search' && a.value === 'The Little Prince')!);
-  else if (task.id === 'library-search' && !state.selectedId) candidates.push(allowed.find((a) => a.target === 'book:book-little-prince')!);
+  else if (task.id === 'library-search' && !state.selectedId) { const target = allowed.find((a) => a.target === 'book:book-little-prince'); if (bookResults(state).some((book) => book.id === 'book-little-prince') && target) candidates.push(target); }
   else if (task.id === 'library-filter' && state.availability !== 'available') candidates.push(allowed.find((a) => a.target === 'availability' && a.value === 'available')!);
   else if (task.id === 'library-sort' && state.sort !== 'recent') candidates.push(allowed.find((a) => a.target === 'sort' && a.value === 'recent')!);
   else if (task.id === 'form-profile' && !state.fields.name) candidates.push(allowed.find((a) => a.target === 'name')!);
@@ -255,7 +286,7 @@ function diff(before: BrowserState, after: BrowserState): string[] {
 }
 
 export function applyBrowserAction(state: BrowserState, candidate: BrowserAction): BrowserState {
-  if (!isAllowlistedAction(state, candidate)) return state;
+  if (!validateBrowserAction(state, candidate).ok) return state;
   const next: BrowserState = { ...state, fields: { ...state.fields } };
   if (candidate.kind === 'observe') return { ...next, notice: 'Snapshot observed; no page side effect.' };
   if (candidate.kind === 'scroll') return { ...next, scroll: Number(candidate.value), notice: `Scrolled to ${candidate.value}%.` };
@@ -281,13 +312,13 @@ export function validateTaskCompletion(task: BrowserTask | BrowserTaskId, state:
   const resolved = typeof task === 'string' ? getBrowserTask(task) : task;
   if (!resolved || state.taskId !== resolved.id || state.site !== resolved.site) return { success: false, reason: 'task/state mismatch' };
   switch (resolved.id) {
-    case 'ec-search': return { success: state.query === 'Green Tea Starter Set' && state.selectedId === 'ec-green-tea', reason: 'search query and product details must match' };
-    case 'ec-filter': return { success: state.category === 'stationery', reason: 'stationery category must be selected' };
-    case 'ec-sort': return { success: state.sort === 'price-low', reason: 'price-low sort must be selected' };
+    case 'ec-search': return { success: state.query === 'Green Tea Starter Set' && productResults(state).some((product) => product.id === 'ec-green-tea') && state.selectedId === 'ec-green-tea', reason: 'search query and visible product details must match' };
+    case 'ec-filter': return { success: state.category === 'stationery' && productResults(state).length > 0 && productResults(state).every((product) => product.category === 'stationery'), reason: 'stationery category must be selected and reflected in results' };
+    case 'ec-sort': return { success: state.sort === 'price-low' && productResults(state).map((product) => product.id).join(',') === 'ec-notebook,ec-mug,ec-green-tea', reason: 'price-low sort must be selected and reflected in results' };
     case 'ec-inspect': return { success: state.selectedId === 'ec-mug', reason: 'Morning Mug details must be open' };
-    case 'library-search': return { success: state.query === 'The Little Prince' && state.selectedId === 'book-little-prince', reason: 'book query and details must match' };
-    case 'library-filter': return { success: state.availability === 'available', reason: 'available-only filter must be selected' };
-    case 'library-sort': return { success: state.sort === 'recent', reason: 'recent sort must be selected' };
+    case 'library-search': return { success: state.query === 'The Little Prince' && bookResults(state).some((book) => book.id === 'book-little-prince') && state.selectedId === 'book-little-prince', reason: 'book query and visible details must match' };
+    case 'library-filter': return { success: state.availability === 'available' && bookResults(state).length > 0 && bookResults(state).every((book) => book.available), reason: 'available-only filter must be selected and reflected in results' };
+    case 'library-sort': return { success: state.sort === 'recent' && bookResults(state).map((book) => book.id).join(',') === 'book-solaris,book-metamorphosis,book-little-prince', reason: 'recent sort must be selected and reflected in results' };
     case 'form-profile': return { success: state.fields.name === 'Aki Tanaka' && state.fields.email === 'aki@example.test', reason: 'safe name and email fields must be filled' };
     case 'form-topic': return { success: state.topic === 'support', reason: 'support topic must be selected' };
     case 'form-required': return { success: Boolean(state.fields.name && state.fields.email && state.fields.message), reason: 'all required fields must be filled; no submit action exists' };
@@ -295,22 +326,26 @@ export function validateTaskCompletion(task: BrowserTask | BrowserTaskId, state:
 }
 
 function node(id: string, role: string, name: string, text = '', attributes: Record<string, string> = {}): DomNodeSnapshot {
-  return { id, role, name, text, visible: true, enabled: true, attributes };
+  return { id, role, name, text, visible: true, enabled: attributes.disabled !== 'true', attributes };
 }
 
 /** Build both DOM and accessibility views from the same synthetic state. */
 export function snapshotFor(state: BrowserState, step = 0): BrowserSnapshot {
-  const dom: DomNodeSnapshot[] = [node('page', 'document', state.site === 'ec' ? 'Mock EC' : state.site === 'library' ? 'Mock Library' : 'Mock Form', '', { 'data-layout': state.variant })];
+  const dom: DomNodeSnapshot[] = [node('page', 'document', state.site === 'ec' ? 'Mock EC' : state.site === 'library' ? 'Mock Library' : 'Mock Form', '', { 'data-layout': state.variant, 'data-shell': state.variant === 'sidebar' ? 'sidebar-navigation' : state.variant === 'dialog' ? 'modal-surface' : state.variant === 'dense' ? 'dense-grid' : 'standard-grid' })];
+  if (state.variant === 'sidebar') dom.push(node('layout-navigation', 'navigation', 'Sidebar navigation', 'Synthetic sidebar layout', { 'data-layout': 'sidebar' }));
+  if (state.variant === 'dialog') dom.push(node('layout-dialog', 'dialog', 'Details dialog surface', 'Synthetic dialog layout', { 'data-layout': 'dialog' }));
+  if (state.variant === 'dense') dom.push(node('layout-grid', 'list', 'Dense results grid', 'Synthetic dense layout', { 'data-layout': 'dense' }));
+  if (state.variant === 'standard') dom.push(node('layout-content', 'main', 'Standard content', 'Synthetic standard layout', { 'data-layout': 'standard' }));
   if (state.site === 'ec') {
     dom.push(node('search', 'textbox', 'Search products', state.query));
     dom.push(node('category', 'combobox', 'Category', state.category));
     dom.push(node('sort', 'combobox', 'Sort by', state.sort));
-    products.forEach((product) => dom.push(node(`product:${product.id}`, 'button', product.name, `${product.category} ${product.price}`)));
+    productResults(state).forEach((product) => dom.push(node(`product:${product.id}`, 'button', product.name, `${product.category} ${product.price}`)));
   } else if (state.site === 'library') {
     dom.push(node('search', 'textbox', 'Search books', state.query));
     dom.push(node('availability', 'combobox', 'Availability', state.availability));
     dom.push(node('sort', 'combobox', 'Sort by', state.sort));
-    books.forEach((book) => dom.push(node(`book:${book.id}`, 'button', book.title, `${book.author}${book.available ? ' available' : ' checked out'}`)));
+    bookResults(state).forEach((book) => dom.push(node(`book:${book.id}`, 'button', book.title, `${book.author}${book.available ? ' available' : ' checked out'}`)));
   } else {
     dom.push(node('name', 'textbox', 'Name', state.fields.name));
     dom.push(node('email', 'textbox', 'Email', state.fields.email));
@@ -319,13 +354,40 @@ export function snapshotFor(state: BrowserState, step = 0): BrowserSnapshot {
     dom.push(node('submit-disabled', 'button', 'Submit unavailable', 'Synthetic sandbox does not submit', { disabled: 'true' }));
   }
   dom.push(node('notice', 'status', 'Sandbox status', state.notice));
-  const accessibility = dom.map((entry) => ({ role: entry.role, name: entry.name, description: entry.text || undefined, focused: false, disabled: entry.attributes.disabled === 'true' }));
+  const accessibility = dom.map((entry) => ({ role: entry.role, name: entry.name, description: entry.text || undefined, focused: false, disabled: !entry.enabled }));
   return { url: `${SYNTHETIC_ORIGIN}${state.route}`, title: `${state.site.toUpperCase()} · Synthetic browser`, site: state.site, variant: state.variant, step, dom, accessibility };
 }
 
 function stateSignature(state: BrowserState): string { return JSON.stringify([state.query, state.category, state.sort, state.availability, state.topic, state.selectedId, state.fields, state.scroll]); }
 
 function recoveryAction(state: BrowserState): BrowserAction { return observeAction(); }
+
+function isBrowserActionShape(value: unknown): value is BrowserAction {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  if (!['observe', 'click', 'type', 'select', 'scroll'].includes(String(candidate.kind))) return false;
+  if (typeof candidate.target !== 'string' || candidate.target.length === 0) return false;
+  return candidate.value === undefined || typeof candidate.value === 'string';
+}
+
+/** Validate the trace envelope before resetting or replaying any state. */
+export function validateBrowserTrace(value: unknown): value is BrowserTraceEnvelope {
+  if (!value || typeof value !== 'object') return false;
+  const envelope = value as Record<string, unknown>;
+  if (envelope.schema !== 'browser-olympics-trace' || envelope.version !== 1 || typeof envelope.taskId !== 'string' || !getBrowserTask(envelope.taskId)) return false;
+  if (!Array.isArray(envelope.events) || envelope.events.length > 10000) return false;
+  return envelope.events.every((event) => {
+    if (!event || typeof event !== 'object') return false;
+    const entry = event as Record<string, unknown>;
+    if (entry.type === 'decision') return isBrowserActionShape(entry.action) && ['replay', 'rule', 'manual'].includes(String(entry.source));
+    if (entry.type === 'invalid') return isBrowserActionShape(entry.action) && isBrowserActionShape(entry.recovery) && typeof entry.reason === 'string';
+    if (entry.type === 'apply') return isBrowserActionShape(entry.action) && Array.isArray(entry.changes) && entry.changes.every((change) => typeof change === 'string') && Boolean(entry.snapshot && typeof entry.snapshot === 'object');
+    if (entry.type === 'observe') return Boolean(entry.snapshot && typeof entry.snapshot === 'object');
+    if (entry.type === 'candidates') return Array.isArray(entry.actions) && entry.actions.every(isBrowserActionShape);
+    if (entry.type === 'complete' || entry.type === 'cap') return typeof entry.step === 'number' && (entry.type === 'complete' || typeof entry.reason === 'string');
+    return false;
+  });
+}
 
 export class BrowserOlympicsRuntime {
   private readonly task: BrowserTask;
@@ -335,6 +397,7 @@ export class BrowserOlympicsRuntime {
   private invalidValue = 0;
   private recoveryValue = 0;
   private noProgressValue = 0;
+  private noProgressStreak = 0;
   private invalidStreak = 0;
   private seen = new Set<string>();
   private events: BrowserTraceEvent[] = [];
@@ -378,34 +441,39 @@ export class BrowserOlympicsRuntime {
       this.invalidStreak += 1;
       const recovery = recoveryAction(this.stateValue);
       this.events.push({ type: 'invalid', step: this.stepValue, action: structuredClone(selected), reason: check.reason, recovery });
-      this.events.push({ type: 'apply', step: this.stepValue, action: recovery, changes: [], snapshot: snapshotFor(this.stateValue, this.stepValue) });
+      const beforeRecovery = this.stateValue;
+      this.stateValue = applyBrowserAction(this.stateValue, recovery);
+      const recoveryChanges = diff(beforeRecovery, this.stateValue);
+      const recoverySnapshot = snapshotFor(this.stateValue, this.stepValue);
+      this.events.push({ type: 'apply', step: this.stepValue, action: recovery, changes: recoveryChanges, snapshot: recoverySnapshot });
       if (this.invalidStreak >= MAX_INVALID_STREAK) this.cap('invalid action loop');
-      return { accepted: false, action: selected, recovery, reason: check.reason, changes: [], snapshot: snapshotFor(this.stateValue, this.stepValue), candidates, metrics: this.metrics };
+      return { accepted: false, action: selected, recovery, reason: check.reason, changes: recoveryChanges, snapshot: recoverySnapshot, candidates, metrics: this.metrics };
     }
     const before = this.stateValue;
     this.stateValue = applyBrowserAction(this.stateValue, selected);
     const changes = diff(before, this.stateValue);
     this.invalidStreak = 0;
     const signature = stateSignature(this.stateValue);
-    if (signature === stateSignature(before)) this.noProgressValue += 1; else this.noProgressValue = 0;
+    if (signature === stateSignature(before)) { this.noProgressValue += 1; this.noProgressStreak += 1; } else this.noProgressStreak = 0;
     this.seen.add(signature);
     const snapshot = snapshotFor(this.stateValue, this.stepValue);
     this.events.push({ type: 'apply', step: this.stepValue, action: structuredClone(selected), changes, snapshot });
     const completion = validateTaskCompletion(this.task, this.stateValue);
     if (completion.success) { this.statusValue = 'completed'; this.events.push({ type: 'complete', step: this.stepValue }); }
     else if (this.stepValue >= MAX_STEPS) this.cap('maximum step cap reached');
-    else if (this.noProgressValue >= MAX_NO_PROGRESS) this.cap('no-progress loop detected');
+    else if (this.noProgressStreak >= MAX_NO_PROGRESS) this.cap('no-progress loop detected');
     return { accepted: true, action: selected, changes, snapshot, candidates, metrics: this.metrics };
   }
   reset() {
-    this.stateValue = createBrowserState(this.task); this.statusValue = 'idle'; this.stepValue = 0; this.invalidValue = 0; this.recoveryValue = 0; this.noProgressValue = 0; this.invalidStreak = 0; this.seen = new Set([stateSignature(this.stateValue)]); this.events = [];
+    this.stateValue = createBrowserState(this.task); this.statusValue = 'idle'; this.stepValue = 0; this.invalidValue = 0; this.recoveryValue = 0; this.noProgressValue = 0; this.noProgressStreak = 0; this.invalidStreak = 0; this.seen = new Set([stateSignature(this.stateValue)]); this.events = [];
   }
   cap(reason: string) { this.statusValue = 'capped'; this.events.push({ type: 'cap', step: this.stepValue, reason }); }
   exportTrace(): string { const trace = { schema: 'browser-olympics-trace' as const, version: 1 as const, taskId: this.task.id, events: this.events }; const serialized = JSON.stringify(trace); if (serialized.length > 500_000) throw new Error('trace exceeds 500KB'); return serialized; }
   get trace() { return this.events.map((event) => structuredClone(event)); }
-  replay(serialized: string | { taskId: BrowserTaskId; events: BrowserTraceEvent[] }): BrowserMetrics {
-    const parsed = typeof serialized === 'string' ? JSON.parse(serialized) as { taskId: BrowserTaskId; events: BrowserTraceEvent[] } : serialized;
-    if (parsed.taskId !== this.task.id || !Array.isArray(parsed.events) || parsed.events.length > 10000) throw new Error('invalid browser trace');
+  replay(serialized: string | BrowserTraceEnvelope): BrowserMetrics {
+    let parsed: unknown;
+    try { parsed = typeof serialized === 'string' ? JSON.parse(serialized) : serialized; } catch { throw new Error('invalid browser trace'); }
+    if (!validateBrowserTrace(parsed) || parsed.taskId !== this.task.id) throw new Error('invalid browser trace');
     this.reset();
     for (const event of parsed.events) {
       if (event.type === 'decision') this.step(event.action, 'replay');
