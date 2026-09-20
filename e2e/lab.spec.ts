@@ -41,4 +41,14 @@ test.describe('replay-only decision lab', () => {
     await page.getByRole('button', { name: 'Replay trace' }).click();
     await expect(page.getByTestId('replay-result')).toContainText('replayed');
   });
+
+  test('Reflex Arena runs a fixed step and records a tactic trace', async ({ page }) => {
+    await page.goto('/pocs/reflex-arena');
+    await expect(page.getByRole('heading', { name: '判断を、盤面の上で体感する。' })).toBeVisible();
+    await page.getByRole('button', { name: '1 step' }).click();
+    await expect(page.getByTestId('arena-status')).toHaveText('running');
+    await page.getByLabel('Tactic', { exact: true }).fill('味方を守る。');
+    await page.getByRole('button', { name: '1 step' }).click();
+    await expect(page.locator('.trace-list')).toContainText('lag');
+  });
 });
