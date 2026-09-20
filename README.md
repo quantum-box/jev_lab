@@ -13,6 +13,14 @@ npm run build
 
 外部APIキーや有料モデル呼び出しはありません。先頭8件は固定レスポンス／リプレイ体験、残り17件はComing soonのカタログ表示です。
 
+## Jev live access gate (PLT-4887)
+
+Jev live is disabled by default and is fail-closed. Replay / Rule never require an access key. To intentionally enable a local single-instance live run, configure all of the following server-only variables (never expose them to the browser): `TACHYON_API_URL` (optional), `TACHYON_API_TOKEN`, `TACHYON_TENANT_ID`, `JEV_LIVE_ACCESS_KEY_HASHES` (comma-separated SHA-256 hex digests), `JEV_LIVE_EXECUTION_MODE=single-instance`, `JEV_LIVE_SINGLE_INSTANCE=true`, `JEV_LIVE_MAX_GLOBAL_REQUESTS`, `JEV_LIVE_MAX_GLOBAL_INFLIGHT`, `JEV_LIVE_MAX_GLOBAL_COST_NANODOLLARS`, `JEV_LIVE_MAX_KEY_REQUESTS`, `JEV_LIVE_MAX_KEY_INFLIGHT`, `JEV_LIVE_MAX_KEY_COST_NANODOLLARS`, `JEV_LIVE_ESTIMATED_COST_NANODOLLARS`, and `JEV_LIVE_MAX_INPUT_BYTES`. `JEV_LIVE_TIMEOUT_MS` is optional (default 8000).
+
+Generate a hash without putting the raw key in configuration: `printf %s 'REPLACE_WITH_EPHEMERAL_KEY' | shasum -a 256` (or `openssl dgst -sha256`), then copy only the 64-character digest into `JEV_LIVE_ACCESS_KEY_HASHES`. The browser sends the ephemeral key only as `x-jev-live-access-key` to this app for that request; it is not saved, exported, logged, or forwarded to Tachyon. A unique `x-jev-request-id` is required and duplicate IDs cannot bypass reservations.
+
+The gate reserves global/per-key requests, in-flight capacity, estimated cost, input bytes, and idempotency before calling the fixed `typesafe/jev-latest` endpoint. Unknown provider cost locks the affected key and global ledger. Multi-instance and deployment mode are intentionally denied: in-process counters are not a safe quota backend across instances. Production enablement requires a durable atomic external quota/ledger first. Live routes never perform payment, deletion, purchase, or real-site side effects.
+
 ## Judgment provider contract
 
 評価画面では Replay / Rule baseline / Jev (live) を明示選択できます。Jev live はサーバーのRoute Handlerからのみ、`typesafe/jev-latest` を呼び出します。設定する環境変数名は `TACHYON_API_URL`（省略時は公開APIの既定URL）、`TACHYON_API_TOKEN`、`TACHYON_TENANT_ID` です。値はクライアントへ渡さず、ログにも出力しません。未設定時はReplayへフォールバックせず、設定エラーを表示します。
