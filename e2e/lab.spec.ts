@@ -135,4 +135,20 @@ test.describe('replay-only decision lab', () => {
     await expect(page.getByRole('heading', { name: /失敗traceから/ })).toBeVisible();
     await expect(page.getByText(/環境・報酬・validator・実行コード/)).toBeVisible();
   });
+
+  test('Search reranking compares baseline and replay with fixed evaluation metrics', async ({ page }) => {
+    await page.goto('/pocs/search-reranking');
+    await expect(page.getByRole('heading', { name: '同じ候補を、もう一度並べる。' })).toBeVisible();
+    await expect(page.getByText(/candidates retrieved · rerank never adds documents/)).toBeVisible();
+    await expect(page.getByText('DETERMINISTIC REPLAY')).toBeVisible();
+    await expect(page.locator('.rerank-row').nth(1)).toContainText(/↑|↓|—/);
+    await page.getByRole('combobox', { name: 'Ranking view' }).selectOption('baseline');
+    await expect(page.getByText('RULE BASELINE', { exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Ranking view' })).toHaveValue('baseline');
+    await page.getByRole('combobox', { name: 'Ranking view' }).selectOption('replay');
+    await expect(page.getByTestId('baseline-ndcg')).toHaveText(/0\.\d+|1/);
+    await expect(page.getByTestId('replay-ndcg')).toHaveText(/0\.\d+|1/);
+    await expect(page.getByTestId('baseline-mrr')).toHaveText(/0\.\d+|1/);
+    await expect(page.getByTestId('replay-mrr')).toHaveText(/0\.\d+|1/);
+  });
 });
