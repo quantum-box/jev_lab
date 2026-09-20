@@ -1,6 +1,17 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('replay-only decision lab', () => {
+  test('account categorizer compares deterministic modes and replays a correction', async ({ page }) => {
+    await page.goto('/pocs/account-categorizer');
+    await expect(page.getByRole('heading', { name: /勘定科目の候補/ })).toBeVisible();
+    await expect(page.getByText('source rules · account-rules-2026.09.1')).toBeVisible();
+    await expect(page.getByText('needs review')).toBeVisible();
+    await page.getByLabel('TX-1001 correction').selectOption('5200');
+    await page.getByRole('button', { name: /Replay corrections/ }).click();
+    await expect(page.getByText('訂正を再生: 担当者の確認')).toBeVisible();
+    await expect(page.getByText('no external API · no secrets')).toBeVisible();
+  });
+
   test('gallery -> PoC -> sample replay -> persisted history', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Reflex Arena' }).click();

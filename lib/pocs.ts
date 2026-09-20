@@ -9,7 +9,7 @@ const seeds: Seed[] = [
  ['ai-dj','AI DJ','創作・UI','Recommend','曲候補 + 気分 + 制約','気分と流れに合う選曲を再生','DJ console','playlist-rubric-v1'],
  ['living-ui','Living UI','創作・UI','Simulate','UI状態 + ユーザー意図','操作に応じて変化するUIを再生','Living canvas','ui-replay-v1'],
  ['browser-olympics','Browser Olympics','ゲーム・自律世界','Prioritize','Web課題 + 制約','ブラウザ課題に対するエージェントの試行を再生','Olympics scoreboard','browser-replay-v1'],
- ['accounting-category','勘定科目の振り分け','業務','Classify','取引摘要 + 勘定科目候補','取引を勘定科目へ振り分ける','Accounting table','label-v1'],
+ ['accounting-category','勘定科目の振り分け','業務','Classify','取引摘要 + 勘定科目候補','取引を勘定科目へ振り分ける','Accounting table','label-v2'],
  ['csv-column-mapping','CSV列マッピング','業務','Recommend','CSVヘッダー + 期待スキーマ','CSV列を標準項目へマッピングする','Mapping table','mapping-v1'],
  ['search-reranking','検索リランキング','業務','Prioritize','検索結果 + クエリ + 評価軸','検索結果を意図に合わせて並べ替える','Ranking board','ranking-v1'],
  ['semantic-lint','コードの意味的lint','業務','Explain','コード差分 + ルール','コードの意味上のリスクを説明する','Code review','evidence-v1'],
