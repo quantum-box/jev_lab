@@ -1,6 +1,18 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('replay-only decision lab', () => {
+  test('CSV column mapping preserves source context and exports a reviewed config', async ({ page }) => {
+    await page.goto('/pocs/csv-column-mapping');
+    await expect(page.getByRole('heading', { name: /CSV列を/ })).toBeVisible();
+    await expect(page.getByText('csv-column-mapping-input-1.0', { exact: true })).toBeVisible();
+    await page.getByRole('combobox', { name: 'Interaction sample' }).selectOption('english');
+    await expect(page.getByText('original values preserved')).toBeVisible();
+    await page.getByRole('button', { name: 'Download JSON config' }).click();
+    await page.getByRole('link', { name: 'Open evaluation' }).click();
+    await expect(page.getByRole('heading', { name: /50-case evaluation/ })).toBeVisible();
+    await expect(page.getByText('50 / 50')).toBeVisible();
+  });
+
   test('account categorizer compares deterministic modes and replays a correction', async ({ page }) => {
     await page.goto('/pocs/account-categorizer');
     await expect(page.getByRole('heading', { name: /勘定科目の候補/ })).toBeVisible();
