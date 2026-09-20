@@ -29,6 +29,12 @@ Jev liveは `app/api/playground/route.ts` のサーバー専用Route Handlerだ�
 
 ## Evaluation and local history
 
+## Runtime Lab
+
+`/runtime-lab` はカタログの26件目ではなく、環境tickと判断cadenceを分けた共通連続実験ランタイムの検証ユーティリティです。seed付き状態機械が snapshot → allowed candidates → adapter → validator → apply → trace の順に進み、pause/resume、1 step、reset、trace JSON export/import/replay、baseline比較を支えます。pause時は世代を無効化し、in-flightの遅い判断はapplyされません。step/time/concurrency/cost capとsafe actionを設けています。
+
+`lib/runtime.ts` はPoCごとの `updateEnvironment`、`applyAction`、`validateAction` を受ける独立型コアです。Replay/Rule baselineはローカルで再現可能ですが、同じseedでもliveモデル出力の再現性は保証しません。Jev liveは明示選択した操作だけで `/api/runtime-lab` を経由し、`typesafe/jev-latest` に allowed action IDs のChoice、instructions、criteriaを送ります。未設定時はfallbackしません。
+
 `data/evaluations.json` は schema/dataset version付きのリポジトリ固定fixtureです。初期8 PoCを含み、分類3件は tuning 30 / fixed 20、継続系5件は固定seedシナリオ10件です。期待ラベルは人手／ルールラベルであり、モデル出力をground truthにしません。CI・ローカル評価は Replay / Rule のみを使い、Jev liveは評価画面で明示的に選択した場合に限ります。
 
 `/runs` の履歴はブラウザlocalStorageだけに保存され、DBや外部送信はありません。JSON/CSV export、schema検証付きimport、個別実行の表示、全削除を提供します。評価指標は分類のaccuracy/coverage/error rate/confusion matrix、シナリオのcompletion/constraint/follow-through/p50/p95で、主観的品質とconfidenceは別扱いです。
