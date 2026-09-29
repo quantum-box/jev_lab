@@ -4,6 +4,9 @@
   "main": "custom-worker.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "secrets": {
+    "required": ["TACHYON_API_TOKEN"]
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
