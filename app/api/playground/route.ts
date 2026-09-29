@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { normalizePlaygroundAnswer, PlaygroundValidationError, validatePlaygroundInput, wireRequest } from '../../../lib/playground';
 import { authorizeLiveRequest, liveErrorResponse, settleLiveRequest, verifiedUsage, type LiveReservation } from '../../../lib/live-gate';
-export const runtime = 'nodejs';
 export async function POST(request: NextRequest) {
   let raw: string; try { raw = await request.text(); } catch { return NextResponse.json({ code: 'invalid_json', error: 'JSONを読み取れません。' }, { status: 400 }); }
   let value: unknown; try { value = JSON.parse(raw); } catch { return NextResponse.json({ code: 'invalid_json', error: 'JSONを読み取れません。' }, { status: 400 }); }

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import {FormEvent, useMemo, useState} from 'react';
+import {FormEvent, useMemo, useState, type ReactElement} from 'react';
 import {
   DISPLAY_COMPONENT_REGISTRY,
   LIVING_EVALUATION_CASES,
@@ -54,7 +54,7 @@ function ChartDisplay({records}: {records: readonly LivingRecord[]}) {
   return <div className="living-chart" role="img" aria-label="各仕事の時系列の進捗推移を表すチャート">{records.map((record) => <div className="living-trend-row" key={record.id}><strong title={record.id}>{record.title}</strong><div className="living-trend-points">{record.progressHistory.map((point) => <div className="living-trend-point" key={`${record.id}-${point.date}`}><span>{point.date}</span><div className="living-bar-track"><div className="living-bar" style={{width: `${point.value}%`}}><span>{point.value}%</span></div></div></div>)}</div></div>)}</div>;
 }
 
-const DISPLAY_RENDERERS: Record<DisplayComponentId, (props: {records: readonly LivingRecord[]}) => JSX.Element> = {
+const DISPLAY_RENDERERS: Record<DisplayComponentId, (props: {records: readonly LivingRecord[]}) => ReactElement> = {
   table: TableDisplay,
   comparison: ComparisonDisplay,
   cards: CardsDisplay,

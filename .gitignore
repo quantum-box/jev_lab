@@ -1,7 +1,9 @@
 node_modules/
 .next/
-.open-next/
 .wrangler/
+.vinext/
+.cloudflare/
+dist/
 out/
 *.log
 *.tsbuildinfo
