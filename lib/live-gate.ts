@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 export type LiveGateCode = 'live_disabled' | 'unauthorized' | 'quota_exceeded' | 'inflight_exceeded' | 'cost_exceeded' | 'body_too_large' | 'duplicate_request' | 'invalid_request_id';
 
@@ -7,16 +8,16 @@ export class LiveGateError extends Error {
 }
 
 type Config = {
-  hashes: Buffer[]; mode: 'single-instance'; maxInputBytes: number; timeoutMs: number;
+  hashes: Buffer[]; mode: 'single-instance' | 'durable-object'; maxInputBytes: number; timeoutMs: number;
   globalRequests: number; globalInflight: number; globalCost: number;
   keyRequests: number; keyInflight: number; keyCost: number; estimatedCost: number;
 };
 type KeyLedger = { requests: number; inFlight: number; reservedCost: number; settledCost: number; locked: boolean };
-type Reservation = { keyId: string; requestId: string; estimatedCost: number; settled: boolean };
+export type LiveReservation = { keyId: string; requestId: string; estimatedCost: number; settled: boolean; backend: 'memory' | 'durable-object' };
 export type VerifiedUsage = { input_tokens: number; output_tokens: number };
 
 const ledgers = new Map<string, KeyLedger>();
-const active = new Map<string, Reservation>();
+const active = new Map<string, LiveReservation>();
 const completed = new Map<string, number>();
 let global = { requests: 0, inFlight: 0, reservedCost: 0, settledCost: 0, locked: false };
 const MAX_RETAINED = 2048;
@@ -29,11 +30,13 @@ function positive(name: string, fallback?: number) {
 function config(): Config {
   const hashes = (process.env.JEV_LIVE_ACCESS_KEY_HASHES ?? '').split(',').map(x => x.trim()).filter(Boolean);
   const mode = process.env.JEV_LIVE_EXECUTION_MODE;
-  if (mode !== 'single-instance' || process.env.JEV_LIVE_SINGLE_INSTANCE !== 'true' || !hashes.length) throw new LiveGateError('live_disabled', 'Jev live execution is disabled or not explicitly configured.', 503);
+  const production = process.env.NODE_ENV === 'production';
+  if ((production && mode !== 'durable-object') || (!production && mode !== 'single-instance') || !hashes.length) throw new LiveGateError('live_disabled', 'Jev live execution is disabled or not explicitly configured.', 503);
+  if (!production && process.env.JEV_LIVE_SINGLE_INSTANCE !== 'true') throw new LiveGateError('live_disabled', 'Local single-instance execution was not explicitly enabled.', 503);
   if (hashes.some(x => !/^[a-f0-9]{64}$/i.test(x))) throw new LiveGateError('live_disabled', 'Jev live access-key hashes are misconfigured.', 503);
   const vals = [positive('JEV_LIVE_MAX_GLOBAL_REQUESTS'), positive('JEV_LIVE_MAX_GLOBAL_INFLIGHT'), positive('JEV_LIVE_MAX_GLOBAL_COST_NANODOLLARS'), positive('JEV_LIVE_MAX_KEY_REQUESTS'), positive('JEV_LIVE_MAX_KEY_INFLIGHT'), positive('JEV_LIVE_MAX_KEY_COST_NANODOLLARS'), positive('JEV_LIVE_ESTIMATED_COST_NANODOLLARS'), positive('JEV_LIVE_MAX_INPUT_BYTES')];
   if (vals.some(x => x === undefined)) throw new LiveGateError('live_disabled', 'Jev live budget configuration is incomplete.', 503);
-  return { hashes: hashes.map(x => Buffer.from(x, 'hex')), mode: 'single-instance', timeoutMs: positive('JEV_LIVE_TIMEOUT_MS', 8000)!, maxInputBytes: vals[7]!, globalRequests: vals[0]!, globalInflight: vals[1]!, globalCost: vals[2]!, keyRequests: vals[3]!, keyInflight: vals[4]!, keyCost: vals[5]!, estimatedCost: vals[6]! };
+  return { hashes: hashes.map(x => Buffer.from(x, 'hex')), mode: mode as Config['mode'], timeoutMs: positive('JEV_LIVE_TIMEOUT_MS', 8000)!, maxInputBytes: vals[7]!, globalRequests: vals[0]!, globalInflight: vals[1]!, globalCost: vals[2]!, keyRequests: vals[3]!, keyInflight: vals[4]!, keyCost: vals[5]!, estimatedCost: vals[6]! };
 }
 function digest(key: string) { return createHash('sha256').update(key, 'utf8').digest(); }
 function keyId(key: string, hashes: Buffer[]) {
@@ -42,22 +45,65 @@ function keyId(key: string, hashes: Buffer[]) {
 }
 function remember(map: Map<string, number>, k: string) { map.set(k, Date.now()); while (map.size > MAX_RETAINED) map.delete(map.keys().next().value!); }
 
+function limits(c: Config) {
+  return {
+    globalRequests: c.globalRequests, globalInflight: c.globalInflight, globalCost: c.globalCost,
+    keyRequests: c.keyRequests, keyInflight: c.keyInflight, keyCost: c.keyCost,
+    estimatedCost: c.estimatedCost, timeoutMs: c.timeoutMs, maxInputBytes: c.maxInputBytes,
+  };
+}
+function ledgerNamespace() {
+  try {
+    const env = getCloudflareContext().env as unknown as {
+      JEV_LIVE_LEDGER?: { idFromName(name: string): unknown; get(id: unknown): { fetch(input: string, init: RequestInit): Promise<Response> } };
+    };
+    if (!env.JEV_LIVE_LEDGER) throw new Error('binding missing');
+    return env.JEV_LIVE_LEDGER;
+  } catch {
+    throw new LiveGateError('live_disabled', 'The durable live quota ledger is unavailable.', 503);
+  }
+}
+async function durableLedger(action: 'reserve' | 'settle', body: Record<string, unknown>) {
+  let response: Response;
+  try {
+    const binding = ledgerNamespace();
+    const stub = binding.get(binding.idFromName('jev-live-global-v1'));
+    response = await stub.fetch(`https://jev-live-ledger.internal/${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (error) {
+    if (error instanceof LiveGateError) throw error;
+    throw new LiveGateError('live_disabled', 'The durable live quota ledger could not be reached.', 503);
+  }
+  let result: Record<string, unknown>;
+  try { result = await response.json() as Record<string, unknown>; } catch { throw new LiveGateError('live_disabled', 'The durable live quota ledger returned an invalid response.', 503); }
+  if (!response.ok) {
+    const code = typeof result.code === 'string' ? result.code : 'live_disabled';
+    const allowed: LiveGateCode[] = ['live_disabled', 'unauthorized', 'quota_exceeded', 'inflight_exceeded', 'cost_exceeded', 'body_too_large', 'duplicate_request', 'invalid_request_id'];
+    throw new LiveGateError(allowed.includes(code as LiveGateCode) ? code as LiveGateCode : 'live_disabled', typeof result.error === 'string' ? result.error : 'Live quota check failed.', response.status);
+  }
+  return result;
+}
+
 export function resetLiveGateForTests() { ledgers.clear(); active.clear(); completed.clear(); global = { requests: 0, inFlight: 0, reservedCost: 0, settledCost: 0, locked: false }; }
 
-export function authorizeLiveRequest(request: Request, inputBytes: number, requestId: string | undefined) {
+export async function authorizeLiveRequest(request: Request, inputBytes: number, requestId: string | undefined) {
   const c = config();
   if (!requestId || !/^[A-Za-z0-9._:-]{8,160}$/.test(requestId)) throw new LiveGateError('invalid_request_id', 'A valid request ID is required.', 400);
   if (!Number.isSafeInteger(inputBytes) || inputBytes < 0 || inputBytes > c.maxInputBytes) throw new LiveGateError('body_too_large', 'Input exceeds the configured live limit.', 413);
   const key = request.headers.get('x-jev-live-access-key');
   if (!key || key.length > 4096 || !keyId(key, c.hashes)) throw new LiveGateError('unauthorized', 'A valid Jev live access key is required.', 401);
-  const id = keyId(key, c.hashes)!; const ledger = ledgers.get(id) ?? { requests: 0, inFlight: 0, reservedCost: 0, settledCost: 0, locked: false }; ledgers.set(id, ledger);
+  const id = keyId(key, c.hashes)!;
+  if (c.mode === 'durable-object') {
+    await durableLedger('reserve', { keyId: id, requestId, inputBytes, limits: limits(c) });
+    return { reservation: { keyId: id, requestId, estimatedCost: c.estimatedCost, settled: false, backend: 'durable-object' as const }, timeoutMs: c.timeoutMs };
+  }
+  const ledger = ledgers.get(id) ?? { requests: 0, inFlight: 0, reservedCost: 0, settledCost: 0, locked: false }; ledgers.set(id, ledger);
   if (completed.has(`${id}:${requestId}`) || active.has(`${id}:${requestId}`)) throw new LiveGateError('duplicate_request', 'This live request ID was already used.', 409);
   if (global.locked || ledger.locked) throw new LiveGateError('cost_exceeded', 'Live cost budget is locked pending verified usage.', 429);
   if (global.requests >= c.globalRequests || ledger.requests >= c.keyRequests) throw new LiveGateError('quota_exceeded', 'Live request quota has been reached.', 429);
   if (global.inFlight >= c.globalInflight || ledger.inFlight >= c.keyInflight) throw new LiveGateError('inflight_exceeded', 'Live in-flight capacity has been reached.', 429);
   if (global.settledCost + global.reservedCost + c.estimatedCost > c.globalCost || ledger.settledCost + ledger.reservedCost + c.estimatedCost > c.keyCost) throw new LiveGateError('cost_exceeded', 'Live cost budget has been reached.', 429);
   global.requests++; global.inFlight++; global.reservedCost += c.estimatedCost; ledger.requests++; ledger.inFlight++; ledger.reservedCost += c.estimatedCost;
-  const reservation: Reservation = { keyId: id, requestId, estimatedCost: c.estimatedCost, settled: false }; active.set(`${id}:${requestId}`, reservation);
+  const reservation: LiveReservation = { keyId: id, requestId, estimatedCost: c.estimatedCost, settled: false, backend: 'memory' }; active.set(`${id}:${requestId}`, reservation);
   return { reservation, timeoutMs: c.timeoutMs };
 }
 
@@ -66,14 +112,20 @@ export function verifiedUsage(value: unknown): VerifiedUsage | undefined {
   const v = value as Record<string, unknown>;
   return Number.isSafeInteger(v.input_tokens) && (v.input_tokens as number) >= 0 && Number.isSafeInteger(v.output_tokens) && (v.output_tokens as number) >= 0 ? { input_tokens: v.input_tokens as number, output_tokens: v.output_tokens as number } : undefined;
 }
-export function settleLiveRequest(reservation: Reservation, result: { costNanodollars?: number; usage?: VerifiedUsage }) {
-  if (reservation.settled) return; reservation.settled = true; const c = config(); const ledger = ledgers.get(reservation.keyId)!; const k = `${reservation.keyId}:${reservation.requestId}`; active.delete(k); remember(completed, k);
+export async function settleLiveRequest(reservation: LiveReservation, result: { costNanodollars?: number; usage?: VerifiedUsage }) {
+  if (reservation.settled) return;
+  if (reservation.backend === 'durable-object') {
+    reservation.settled = true;
+    await durableLedger('settle', { keyId: reservation.keyId, requestId: reservation.requestId, costNanodollars: result.costNanodollars, usage: result.usage });
+    return;
+  }
+  reservation.settled = true; const c = config(); const ledger = ledgers.get(reservation.keyId)!; const k = `${reservation.keyId}:${reservation.requestId}`; active.delete(k); remember(completed, k);
   global.inFlight--; ledger.inFlight--; global.reservedCost -= reservation.estimatedCost; ledger.reservedCost -= reservation.estimatedCost;
   const cost = result.costNanodollars;
-  if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0 || !result.usage) { global.locked = true; ledger.locked = true; return; }
+  if (typeof cost !== 'number' || !Number.isSafeInteger(cost) || cost < 0 || !result.usage) { global.locked = true; ledger.locked = true; return; }
   global.settledCost += cost; ledger.settledCost += cost;
   if (global.settledCost > c.globalCost || ledger.settledCost > c.keyCost) { global.locked = true; ledger.locked = true; }
 }
 
-export function cancelLiveRequest(reservation: Reservation) { settleLiveRequest(reservation, {}); }
+export async function cancelLiveRequest(reservation: LiveReservation) { await settleLiveRequest(reservation, {}); }
 export function liveErrorResponse(error: unknown) { const e = error instanceof LiveGateError ? error : new LiveGateError('live_disabled', 'Jev live execution is unavailable.', 503); return { code: e.code === 'live_disabled' ? 'missing_configuration' : e.code, error: e.message }; }
