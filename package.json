@@ -2,34 +2,40 @@
   "name": "jev-ai-decision-lab",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "build:cloudflare": "opennextjs-cloudflare build",
-    "preview:cloudflare": "opennextjs-cloudflare build --config=wrangler.preview.jsonc && opennextjs-cloudflare preview --config=wrangler.preview.jsonc",
-    "start": "next start",
+    "dev": "vinext dev",
+    "build": "vinext build",
+    "build:cloudflare": "TACHYON_CLOUDFLARE_BUILD=1 vinext build",
+    "start": "vinext start",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test:contract": "tsx --test tests/judgments.test.ts",
     "test:runtime": "tsx --test tests/runtime.test.ts",
     "test:unit": "tsx --test tests/*.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "next": "14.2.35",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "next": "16.2.7",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "vinext": "1.0.0"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "1.15.1",
+    "@cloudflare/vite-plugin": "^1.39.0",
+    "@cloudflare/workers-types": "^5.20260929.1",
     "@playwright/test": "^1.48.2",
-    "@types/node": "20.16.5",
-    "@types/react": "18.3.5",
-    "@types/react-dom": "18.3.0",
-    "eslint": "8.57.1",
-    "eslint-config-next": "14.2.35",
+    "@types/node": "^20.19.43",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "@vitejs/plugin-rsc": "^0.5.26",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "16.2.7",
+    "react-server-dom-webpack": "19.2.6",
     "tsx": "4.19.1",
-    "typescript": "5.6.2",
-    "wrangler": "4.59.2"
+    "typescript": "^5.8.3",
+    "vite": "^8.0.14",
+    "wrangler": "^4.95.0"
   }
 }

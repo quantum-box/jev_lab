@@ -31,6 +31,8 @@ The gate reserves daily global/per-key requests, in-flight capacity, estimated c
 
 ## Judgment provider contract
 
+Cloud Apps builds this app with Vinext on Cloudflare Workers. Tachyon generates the Worker configuration from `tachyon.yml` during the remote build; keep Wrangler configuration out of the repository and local workspace. The local `dev` and `build` scripts run Vinext without the Cloudflare plugin or Cloudflare bindings. The Cloud Apps `build:cloudflare` script enables the Cloudflare plugin and uses the generated bindings.
+
 評価画面では Replay / Rule baseline / Jev (live) を明示選択できます。Jev live はサーバーのRoute Handlerからのみ、`typesafe/jev-latest` を呼び出します。設定する環境変数名は `TACHYON_API_URL`（省略時は公開APIの既定URL）、`TACHYON_API_TOKEN`、`TACHYON_TENANT_ID` です。値はクライアントへ渡さず、ログにも出力しません。未設定時はReplayへフォールバックせず、設定エラーを表示します。
 
 契約テストは `npm run test:contract` で実行できます（fetchをモックし、エンドポイント、認証ヘッダー、request shape、typed response、未設定時の非フォールバックを検証します）。

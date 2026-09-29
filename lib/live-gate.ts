@@ -1,5 +1,4 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 export type LiveGateCode = 'live_disabled' | 'unauthorized' | 'quota_exceeded' | 'inflight_exceeded' | 'cost_exceeded' | 'body_too_large' | 'duplicate_request' | 'invalid_request_id';
 
@@ -52,13 +51,14 @@ function limits(c: Config) {
     estimatedCost: c.estimatedCost, timeoutMs: c.timeoutMs, maxInputBytes: c.maxInputBytes,
   };
 }
-function ledgerNamespace() {
+async function ledgerNamespace() {
   try {
-    const env = getCloudflareContext().env as unknown as {
+    const { env } = await import('cloudflare:workers');
+    const bindings = env as unknown as {
       JEV_LIVE_LEDGER?: { idFromName(name: string): unknown; get(id: unknown): { fetch(input: string, init: RequestInit): Promise<Response> } };
     };
-    if (!env.JEV_LIVE_LEDGER) throw new Error('binding missing');
-    return env.JEV_LIVE_LEDGER;
+    if (!bindings.JEV_LIVE_LEDGER) throw new Error('binding missing');
+    return bindings.JEV_LIVE_LEDGER;
   } catch {
     throw new LiveGateError('live_disabled', 'The durable live quota ledger is unavailable.', 503);
   }
@@ -66,7 +66,7 @@ function ledgerNamespace() {
 async function durableLedger(action: 'reserve' | 'settle', body: Record<string, unknown>) {
   let response: Response;
   try {
-    const binding = ledgerNamespace();
+    const binding = await ledgerNamespace();
     const stub = binding.get(binding.idFromName('jev-live-global-v1'));
     response = await stub.fetch(`https://jev-live-ledger.internal/${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   } catch (error) {

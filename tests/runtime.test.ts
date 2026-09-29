@@ -25,7 +25,7 @@ test('runtime Jev missing configuration does not fallback', async () => {
   const oldToken = process.env.TACHYON_API_TOKEN, oldTenant = process.env.TACHYON_TENANT_ID;
   delete process.env.TACHYON_API_TOKEN; delete process.env.TACHYON_TENANT_ID;
   const response = await POST(new Request('http://localhost/api/runtime-lab', { method: 'POST', body: JSON.stringify({ snapshot: { x: 0 }, actionIds: ['left', 'wait'] }) }));
-  assert.equal(response.status, 503); assert.equal((await response.json()).code, 'missing_configuration');
+  assert.equal(response.status, 503); assert.equal((await response.json() as {code?:string}).code, 'missing_configuration');
   if (oldToken === undefined) delete process.env.TACHYON_API_TOKEN; else process.env.TACHYON_API_TOKEN = oldToken;
   if (oldTenant === undefined) delete process.env.TACHYON_TENANT_ID; else process.env.TACHYON_TENANT_ID = oldTenant;
 });

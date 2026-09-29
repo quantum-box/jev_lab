@@ -1,13 +1,15 @@
 'use client';
 import Link from 'next/link';
-import { useRef, useState } from 'react';
+import { use, useRef, useState } from 'react';
 import { getPoc } from '../../../../lib/pocs';
 import { getDataset, loadHistory, saveHistory, datasetVersion, classificationMetrics, scenarioMetrics } from '../../../../lib/evaluation';
+import type { JudgmentResult } from '../../../../lib/judgments';
 
-export default function Eval({ params }: { params: { slug: string } }) {
-  const poc=getPoc(params.slug); const data=getDataset(params.slug); const [mode,setMode]=useState<'replay'|'rule'|'jev'>('replay'); const [state,setState]=useState('idle'); const [result,setResult]=useState<any>(); const [batch,setBatch]=useState<any[]>([]); const [key,setKey]=useState(''); const canceled=useRef(false);
+export default function Eval({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = use(params);
+  const poc=getPoc(slug); const data=getDataset(slug); const [mode,setMode]=useState<'replay'|'rule'|'jev'>('replay'); const [state,setState]=useState('idle'); const [result,setResult]=useState<any>(); const [batch,setBatch]=useState<any[]>([]); const [key,setKey]=useState(''); const canceled=useRef(false);
   if(!poc||!data)return <div className="empty"><h1>PoC not found</h1><Link href="/">Return to gallery</Link></div>;
-  async function run(input:string){const started=Date.now();try{const r=await fetch('/api/runs',{method:'POST',headers:{'content-type':'application/json','x-jev-live-access-key':key},body:JSON.stringify({slug:poc.slug,text:input,mode,requestId:crypto.randomUUID()})});const j=await r.json();if(!r.ok)throw new Error(j.error?.message??'run failed');const out=String(j.answers?.[0]?.choice??j.answers?.[0]?.score??j.answers?.[0]?.noul??'unavailable');saveHistory({schemaVersion:'jev-history-1',runId:`run_${Date.now()}`,slug:poc.slug,mode,provider:j.provider,model:j.model,input,criteria:poc.evaluationAdapter,datasetVersion,startedAt:new Date().toISOString(),durationMs:Date.now()-started,usage:j.usage,cost:j.cost,priceBasisVersion:j.priceBasisVersion,outcome:out});return {itemId:input,mode,outcome:out};}catch(e){return {itemId:input,mode,error:e instanceof Error?e.message:'failed'};}}
+  async function run(input:string){const started=Date.now();try{const r=await fetch('/api/runs',{method:'POST',headers:{'content-type':'application/json','x-jev-live-access-key':key},body:JSON.stringify({slug:poc.slug,text:input,mode,requestId:crypto.randomUUID()})});const j=await r.json() as JudgmentResult & {error?:{message?:string}};if(!r.ok)throw new Error(j.error?.message??'run failed');const answer=j.answers?.[0]; const value=answer?('choice' in answer?answer.choice:'score' in answer?answer.score:answer.noul):undefined; const out=String(value??'unavailable');saveHistory({schemaVersion:'jev-history-1',runId:`run_${Date.now()}`,slug:poc.slug,mode,provider:j.provider,model:j.model,input,criteria:poc.evaluationAdapter,datasetVersion,startedAt:new Date().toISOString(),durationMs:Date.now()-started,usage:j.usage,cost:j.cost,priceBasisVersion:j.priceBasisVersion,outcome:out});return {itemId:input,mode,outcome:out};}catch(e){return {itemId:input,mode,error:e instanceof Error?e.message:'failed'};}}
   async function sample(){setState('loading');setResult(await run(poc.samples[0]));setState('done');}
   async function batchRun(){canceled.current=false;setState('batch');setBatch([]);const rows=(data.items??[]).slice(0,10).map((x:any)=>x.text);const out=[];for(const x of rows){if(canceled.current)break;out.push(await run(x));setBatch([...out]);}setState(canceled.current?'canceled':'done');}
   const metrics:any=data.kind==='classification'?classificationMetrics(batch):scenarioMetrics(batch);

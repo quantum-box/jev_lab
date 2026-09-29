@@ -20,8 +20,8 @@ export async function POST(request: Request) {
     if (!response.ok) { await settleLiveRequest(reservation, {}); return NextResponse.json({ error: 'Jev provider error.', code: 'provider_error' }, { status: 502 }); }
     const result = await response.json() as Record<string, unknown>; const answers = result.answers; const answer = answers && typeof answers === 'object' ? (answers as Record<string, unknown>).action : undefined;
     if (!answer || typeof answer !== 'object' || !actionIds.includes(String((answer as Record<string, unknown>).choice))) { await settleLiveRequest(reservation, {}); return NextResponse.json({ error: 'Jev response did not select an allowed action.', code: 'malformed_response' }, { status: 502 }); }
-    const cost = typeof result.cost_nanodollars === 'number' ? result.cost_nanodollars : undefined; await settleLiveRequest(reservation, { costNanodollars: cost, usage: verifiedUsage(result.usage) });
-    return NextResponse.json({ action: String((answer as Record<string, unknown>).choice), usage: result.usage ?? { status: 'unavailable' }, cost: cost === undefined ? { status: 'unavailable' } : { status: 'measured', nanodollars: cost } });
+    const cost = typeof result.cost_nanodollars === 'number' ? result.cost_nanodollars : undefined; const usage = verifiedUsage(result.usage); await settleLiveRequest(reservation, { costNanodollars: cost, usage });
+    return NextResponse.json({ action: String((answer as Record<string, unknown>).choice), usage: usage ? { status: 'measured', inputTokens: usage.input_tokens, outputTokens: usage.output_tokens } : { status: 'unavailable' }, cost: cost === undefined ? { status: 'unavailable' } : { status: 'measured', nanodollars: cost } });
   } catch { await settleLiveRequest(reservation, {}); return NextResponse.json({ error: request.signal.aborted ? 'Jev request canceled.' : timedOut ? 'Jev request timed out.' : 'Jev request failed.', code: request.signal.aborted ? 'canceled' : timedOut ? 'timeout' : 'provider_error' }, { status: request.signal.aborted ? 499 : timedOut ? 504 : 502 }); }
   finally { clearTimeout(timer); request.signal.removeEventListener('abort', cancel); }
 }

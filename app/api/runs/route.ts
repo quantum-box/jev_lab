@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { runJudgment, JudgmentError, type ProviderMode, type JudgmentInput } from '../../../lib/judgments';
 import { authorizeLiveRequest, liveErrorResponse, settleLiveRequest, verifiedUsage } from '../../../lib/live-gate';
-export const runtime = 'nodejs';
 export async function POST(request: Request) {
   let body: { slug?: string; text?: string; mode?: ProviderMode; requestId?: string };
   try { body = await request.json(); } catch { return NextResponse.json({ error: { code: 'invalid_json', message: 'JSONが不正です。' } }, { status: 400 }); }
