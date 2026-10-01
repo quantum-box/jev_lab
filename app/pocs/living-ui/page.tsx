@@ -5,6 +5,7 @@ import {FormEvent, useMemo, useState, type ReactElement} from 'react';
 import {
   DISPLAY_COMPONENT_REGISTRY,
   LIVING_EVALUATION_CASES,
+  LIVING_INTENT_CHOICES,
   LIVING_OPERATION_SAMPLES,
   LIVING_RECORDS,
   reconcileHistorySelection,
@@ -14,6 +15,7 @@ import {
   resolveLivingUi,
   validateComposition,
 } from '../../../lib/living-ui';
+import {JevDecision, type DecisionView} from '../../../components/JevDecision';
 
 type HistoryEntry = LivingHistoryEntry;
 
@@ -121,6 +123,15 @@ export default function LivingUiPage() {
   }
 
   const {resolution} = current;
+  const intentLabels: Record<string, string> = {scan: '一覧で俯瞰', compare: '2件を比較', plan: '期限を時系列で', trend: '推移をグラフで', detail: '要点をカードで'};
+  const componentLabel = (id: DisplayComponentId) => DISPLAY_COMPONENT_REGISTRY.find((definition) => definition.id === id)?.label ?? id;
+  const decisionView: DecisionView = {
+    question: 'この依頼には、どの見せ方が合う？', type: 'choice', source: 'replay',
+    state: [['ユーザーの依頼', current.prompt || '（空の入力）'], ['一致した語', resolution.composition.matchedKeywords.join(' / ') || 'なし'], ['使えるデータ', `固定レコード ${resolution.records.length}件`], ['使える部品', `登録済み ${DISPLAY_COMPONENT_REGISTRY.length}種のみ`]],
+    options: LIVING_INTENT_CHOICES.map(({intent, components}) => ({key: intent, label: `${intentLabels[intent]}（${components.map(componentLabel).join(' + ')}）`})),
+    picked: resolution.composition.intent,
+    effect: resolution.composition.safeFallback ? '→ 意図を特定できないため、安全な一覧（Table）で表示' : `→ ${resolution.composition.components.map(componentLabel).join(' + ')} で画面を組み替え`,
+  };
   const selectedDefinitions = resolution.composition.components.map((id) => DISPLAY_COMPONENT_REGISTRY.find((definition) => definition.id === id)).filter(Boolean);
 
   return <div className="living-page">
@@ -145,6 +156,7 @@ export default function LivingUiPage() {
       </aside>
 
       <section className="living-stage" aria-label="Living UI output">
+        <JevDecision view={decisionView} title="いまの表示判断" id="living-decision" />
         <section className="panel living-composition-panel" data-testid="chosen-composition"><div className="living-panel-heading"><div><span className="living-component-kicker">02 · Decision trace</span><h2>Chosen UI composition</h2></div><span className={`living-intent-badge living-intent-${resolution.composition.intent}`}>{resolution.composition.intent}</span></div><p className="living-current-prompt">「{current.prompt || '（空の入力）'}」</p><div className="living-rule-line"><span>選択理由</span><strong>{resolution.composition.reason}</strong></div><div className="living-component-list">{selectedDefinitions.map((definition) => definition && <div key={definition.id}><strong>{definition.label}</strong><span>{definition.description}</span><code>{definition.id}</code></div>)}</div>{resolution.composition.matchedKeywords.length > 0 && <p className="living-match-line">Matched keywords: {resolution.composition.matchedKeywords.join(' / ')}</p>}{resolution.warning && <p className="living-warning" role="status">{resolution.warning}</p>}</section>
 
         <section className="panel living-output-panel"><div className="living-panel-heading"><div><span className="living-component-kicker">03 · Rendered output</span><h2>Registered components only</h2></div><span className="living-valid-badge">schema validated</span></div>{resolution.composition.components.map((component) => <ComponentDisplay key={component} component={component} records={resolution.records}/>)}</section>

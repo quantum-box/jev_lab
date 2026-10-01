@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { JevDecision, type DecisionView } from '../../../components/JevDecision';
 import { evaluate, interactionSamples, rank, retrieve, type RankingMode } from '../../../lib/search-reranking';
 
 export default function SearchReranking() {
@@ -10,9 +11,20 @@ export default function SearchReranking() {
   const results = useMemo(() => rank(query, candidates, mode), [query, candidates, mode]);
   const baseline = useMemo(() => evaluate('baseline'), []);
   const replay = useMemo(() => evaluate('replay'), []);
+  const total = results.reduce((sum, r) => sum + r.score, 0);
+  const top = results[0];
+  const decision: DecisionView = {
+    question: 'このクエリで1位に置く文書は？', type: 'choice', source: mode === 'replay' ? 'replay' : 'rule',
+    state: [['クエリ', query || '(empty)'], ['候補', `${candidates.length}件（元の検索順）`], ['並べ方', mode === 'replay' ? '語句一致 + タイトル/タグ一致の加点' : '語句一致のみ']],
+    options: results.length ? results.map(r => ({ key: r.id, label: `${r.title}（元#${r.originalRank}）`, p: total > 0 ? r.score / total : 0 })) : [{ key: 'none', label: '候補なし' }],
+    picked: top?.id ?? 'none',
+    scoreLabel: '並べ替えスコアを合計1に正規化した値（確率ではありません）',
+    effect: top ? `→ 「${top.title}」を1位に表示${top.rankChange > 0 ? `（元#${top.originalRank}から繰り上げ）` : '（元の順位のまま）'}` : '→ 並べ替える候補がない（検索段階の取りこぼし）',
+  };
   return <div className="rerank-page">
     <div className="rerank-top"><Link className="back" href="/">← Back to gallery</Link><span className="eyebrow">PLT-4896 · SEARCH RERANKING</span></div>
     <section className="rerank-hero"><div><div className="eyebrow">Inspectability over magic</div><h1>同じ候補を、もう一度並べる。</h1><p>キーワード検索が返した候補集合を固定し、決定的なJev-style replayで再順位付けします。生成ドキュメントや回答は作らず、candidate retrievalとrerankの誤りを分離して観察します。</p></div><div className="rerank-callout"><strong>Replay boundary</strong>外部API・秘密情報なし。live Jev stateではなく、同じ入力から同じ順序を返す検証用の再生です。</div></section>
+    <div style={{ marginBottom: 20 }}><JevDecision view={decision} title="並べ替えの判断 — 下でクエリや並べ方を変えると更新" id="rerank-decision" /></div>
     <div className="rerank-layout"><main>
       <section className="panel rerank-console"><div className="rerank-controls"><label>Interaction sample<select aria-label="Interaction sample" value={query} onChange={e=>setQuery(e.target.value)}>{interactionSamples.map(s=><option key={s.query} value={s.query}>{s.label} · {s.query}</option>)}</select></label><label>Ranking view<select aria-label="Ranking view" value={mode} onChange={e=>setMode(e.target.value as RankingMode)}><option value="baseline">Rule baseline</option><option value="replay">Deterministic Jev replay</option></select></label></div><label className="rerank-query">Query<input aria-label="Search query" value={query} onChange={e=>setQuery(e.target.value)} /></label><div className="rerank-status"><span className="result-badge">{mode === 'replay' ? 'DETERMINISTIC REPLAY' : 'RULE BASELINE'}</span><span>{candidates.length} candidates retrieved · rerank never adds documents</span></div><div className="rerank-table"><div className="rerank-row rerank-head"><span>New</span><span>Original</span><span>Document</span><span>Score</span><span>Change</span><span>Relevance</span></div>{results.map(r=><div className="rerank-row" key={r.id}><strong>#{r.rank}</strong><span>#{r.originalRank}</span><span><b>{r.title}</b><small>{r.id} · {r.tags.join(' · ')}</small></span><span>{r.score.toFixed(2)}</span><span className={r.rankChange>0?'up':r.rankChange<0?'down':''}>{r.rankChange>0?'↑':r.rankChange<0?'↓':'—'} {Math.abs(r.rankChange)}</span><span>{r.relevance}/3</span></div>)}{results.length===0&&<div className="empty">候補がありません。これはrerankではなくcandidate retrieval missです。</div>}</div><p className="rerank-footnote">Human-confirmed labels are used only for evaluation. The interactive replay receives the exact retrieved candidates and applies a fixed tie-break by original rank then document id.</p></section>
       <section className="panel"><h2>50-case evaluation · human-confirmed relevance</h2><div className="metric-grid"><div><small>Rule baseline NDCG@5</small><strong data-testid="baseline-ndcg">{baseline.ndcg}</strong></div><div><small>Jev replay NDCG@5</small><strong data-testid="replay-ndcg">{replay.ndcg}</strong></div><div><small>Baseline MRR</small><strong data-testid="baseline-mrr">{baseline.mrr}</strong></div><div><small>Replay MRR</small><strong data-testid="replay-mrr">{replay.mrr}</strong></div></div><div className="error-split"><div><b>Candidate retrieval misses</b><span>{replay.candidateMisses} / {replay.evaluatedQueries}</span><small>Relevant document never entered the candidate set.</small></div><div><b>Rerank errors</b><span>{replay.rerankErrors} / {replay.evaluatedQueries}</span><small>Relevant candidate entered, but replay placed another candidate first.</small></div></div><p className="muted">rejection: {replay.noRelevantQueryCount} / {replay.queries} ({replay.rejectionRate}) · no-relevance queries are excluded from NDCG/MRR denominators.</p><p className="muted">評価クエリは重複fixtureではない50件の日本語・英語。synonym、negation、abbreviation、unrelated、tie/duplicatesを含みます。</p></section>

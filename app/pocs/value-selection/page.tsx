@@ -16,6 +16,7 @@ import {
   type SelectionExample,
   type ValueKind,
 } from '../../../lib/value-selection';
+import { JevDecision, type DecisionView } from '../../../components/JevDecision';
 
 const targetLabels: Record<ValueKind, string> = { 'invoice-total': '請求総額', 'payment-due': '支払期日' };
 const categoryLabels = ['複数通貨', '負数', '請求総額なし', '日付曖昧', 'OCR誤り風'];
@@ -47,6 +48,21 @@ export default function ValueSelectionPage() {
     { label: '対象種別の不一致', errors: validateSelection(candidates, { ...selection, target: 'payment-due', candidateId: candidates.find(item => item.kind === 'amount')?.id ?? null }) },
   ], [candidates, selection]);
 
+  const targetKind = target === 'invoice-total' ? 'amount' : 'date';
+  const sameKind = candidates.filter(candidate => candidate.kind === targetKind);
+  const selectedCandidate = candidates.find(candidate => candidate.id === selection.candidateId);
+  const valueView: DecisionView = {
+    question: `この文書の「${targetLabels[target]}」はどの候補？`, type: 'choice', source: 'replay',
+    state: [
+      ['対象', targetLabels[target]],
+      ['文書', `${text.split('\n').length}行 · ${text.length}文字`],
+      [`${targetKind === 'amount' ? '金額' : '日付'}の候補`, sameKind.length ? sameKind.map(candidate => candidate.raw).join(' / ') : 'なし'],
+      ['候補の元ラベル', sameKind.length ? [...new Set(sameKind.map(candidate => candidate.label))].join(' / ') : '—'],
+    ],
+    options: [...sameKind.map(candidate => ({ key: candidate.id, label: `${candidate.raw}（${candidate.label}）` })), { key: 'unknown', label: '不明（選ばない）' }],
+    picked: selection.candidateId ?? 'unknown',
+    effect: selection.status === 'selected' && selectedCandidate ? `→ 元文書 ${selectedCandidate.start}–${selectedCandidate.end} 文字目の「${selectedCandidate.raw}」をコピーし ${selection.value} に正規化` : '→ 値を補完せず、保留として人に渡す',
+  };
   function loadExample(next: SelectionExample) {
     setExampleId(next.id);
     setText(next.text);
@@ -66,6 +82,7 @@ export default function ValueSelectionPage() {
     <div className="detail-head"><Link className="back" href="/">← Back to gallery</Link><div className="eyebrow">業務 · Classify · simulation-only</div><h1>金額と日付は、文書の中から選ぶ。</h1><p>小計・税額・合計や複数の日付がある文書から、コードで候補と文字位置を抽出します。Jevは候補IDまたは不明だけを選び、値は元文書からコピー/正規化します。</p></div>
     <div className="value-toolbar panel"><div><span className="badge">{VALUE_SELECTION_RULES_VERSION}</span><span className="value-chip">fixed response / no OCR / no external write</span></div><p>{VALUE_SELECTION_PRICE_BASIS}</p><a className="secondary" href="#value-evaluation">50-case evaluation ↓</a></div>
 
+    <div style={{ margin: '18px 0' }}><JevDecision view={valueView} title="いま下している判断" id="value-decision" /></div>
     <section className="value-layout">
       <main className="value-main">
         <section className="panel"><div className="section-title"><h2>1. 文書と対象を編集</h2><span className="count">code → Jev → copy</span></div><div className="value-examples" aria-label="操作例">{selectionExamples.map(item => <button key={item.id} className={`chip ${exampleId === item.id ? 'active' : ''}`} onClick={() => loadExample(item)}>{item.label}</button>)}</div><label className="value-label">Document text<textarea aria-label="Document text" rows={10} value={text} onChange={event => { setText(event.target.value); setExampleId('custom'); setFixedNotice(''); }} /></label><div className="value-targets" role="group" aria-label="Selection target"><button className={target === 'invoice-total' ? 'active' : ''} onClick={() => setTarget('invoice-total')}>請求総額</button><button className={target === 'payment-due' ? 'active' : ''} onClick={() => setTarget('payment-due')}>支払期日</button></div><div className="actions"><button className="primary" onClick={() => setText(current => current)}>候補を再抽出</button><button className="secondary" onClick={runFixedResponse}>Run fixed response</button></div>{fixedNotice && <div className={`value-fixed ${fixedNotice.includes('FAIL') ? 'value-fixed-fail' : ''}`} data-testid="value-fixed-response">{fixedNotice}</div>}</section>

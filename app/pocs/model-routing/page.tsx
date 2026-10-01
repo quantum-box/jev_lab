@@ -19,6 +19,7 @@ import {
   type RouteTarget,
   type RoutingCriteria,
 } from '../../../lib/model-routing';
+import { JevDecision, type DecisionView } from '../../../components/JevDecision';
 
 const targetLabels: Record<RouteTarget, string> = {
   rules: 'ルール処理',
@@ -67,12 +68,26 @@ export default function ModelRoutingPage() {
     setFixedNotice(example && actual === example.expected ? `固定応答OK: ${example.fixedResponse}` : `固定応答FAIL: expected=${example?.expected ?? 'unknown'}, actual=${actual ?? 'blocked'}`);
   }
   const invalidCount = candidateIssues.length + criteriaIssues.length;
+  const routeView: DecisionView | undefined = decision && {
+    question: 'この依頼を、どの処理先に回す？', type: 'choice', source: 'rule',
+    state: [
+      ['依頼', request.text.length > 42 ? `${request.text.slice(0, 42)}…` : request.text || '（空）'],
+      ['推定tokens', String(request.estimatedTokens ?? 0)],
+      ['機密区分', request.dataSensitivity ?? 'public'],
+      ['ツール・検索', request.needsTools ? '必要' : '不要'],
+      ...decision.judgmentItems.filter(item => item.result !== 'pass').slice(0, 1).map(item => [item.label, `${item.value}（${item.result === 'hold' ? '保留' : '要確認'}）`] as [string, string]),
+    ],
+    options: (Object.keys(targetLabels) as RouteTarget[]).map(key => ({ key, label: targetLabels[key] })),
+    picked: decision.target,
+    effect: `→ ${decision.modelLabel ?? targetLabels[decision.target]} へ振り分け（仮想費用 ${formatCost(decision.estimatedCost)}）`,
+  };
 
   return <div className="router-page">
     <div className="detail-head"><Link className="back" href="/">← Back to gallery</Link><div className="eyebrow">業務 · Recommend · simulation-only</div><h1>Jevが、依頼の重さに合わせて経路を選ぶ。</h1><p>依頼の難しさ、情報不足、機密性を判断項目として表示し、ルール処理・軽量モデル・高性能モデル・人への確認から経路をシミュレーションします。実際の外部モデルは実行しません。</p></div>
 
     <div className="router-toolbar panel"><div><span className="badge">{MODEL_ROUTING_RULES_VERSION}</span><span className="router-chip">fixed response / no external model</span></div><p>{MODEL_ROUTING_PRICE_BASIS}</p><a className="secondary" href="#routing-evaluation">50-case evaluation ↓</a></div>
 
+    {routeView ? <div style={{ margin: '18px 0' }}><JevDecision view={routeView} title="いま下している判断" id="routing-decision" /></div> : null}
     <section className="router-layout">
       <main className="router-main" id="routing-evaluation">
         <section className="panel router-editor"><div className="section-title"><h2>1. 依頼を編集</h2><span className="count">Jev simulation</span></div>

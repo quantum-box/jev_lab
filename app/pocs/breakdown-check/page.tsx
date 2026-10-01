@@ -3,9 +3,11 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { BREAKDOWN_CRITERIA_VERSION, BREAKDOWN_DATA_VERSION, aspectDefinitions, aspectLabels, breakdownFailureExamples, breakdownMetrics, breakdownSamples, checkBreakdown, evaluationCases, type AspectKey, type CoverageStatus, type GoalTask } from '../../../lib/breakdown-check';
+import { JevDecision, type DecisionView } from '../../../components/JevDecision';
 
 const statusLabels: Record<CoverageStatus, string> = { fulfilled: '充足', 'suspected-gap': '不足疑い', 'insufficient-info': '情報不足' };
 const aspectOrder: AspectKey[] = ['verification', 'publication', 'dependency'];
+const statusEffects: Record<CoverageStatus, string> = { fulfilled: '→ この観点は既存タスクで足りている', 'suspected-gap': '→ 「不足疑い」として人に指摘する（タスクは自動作成しない）', 'insufficient-info': '→ 不足と断定せず、前提の確認を人に戻す' };
 
 export default function BreakdownCheckPage() {
   const [selectedId, setSelectedId] = useState(breakdownSamples[0].id);
@@ -18,6 +20,14 @@ export default function BreakdownCheckPage() {
   const tasks = useMemo<GoalTask[]>(() => taskText.split('\n').map((line, index) => line.trim()).filter(Boolean).map((line, index) => { const [title, description] = line.split(' — '); return { id: `input-task-${index + 1}`, title: title || line, description: description || line, url: `#input-task-${index + 1}`, goalId: sample.id }; }), [taskText, sample.id]);
   const current = useMemo(() => checkBreakdown({ ...sample, goalTitle, outcome, tasks, requiredAspects }), [sample, goalTitle, outcome, tasks, requiredAspects]);
   const metrics = useMemo(() => breakdownMetrics(evaluationCases), []);
+  const [focusAspect, setFocusAspect] = useState<AspectKey>('verification');
+  const focused = current.coverage.find(item => item.aspect === focusAspect) ?? current.coverage[0];
+  const view: DecisionView | null = focused ? {
+    question: `「${focused.label}」の観点は、既存タスクで満たされている？`, type: 'choice', source: 'replay',
+    state: [['目標', goalTitle || '（空）'], ['観点の定義', aspectDefinitions[focused.aspect]], ['既存タスク', `${tasks.length}件`], ['根拠になったタスク', focused.evidence.length ? focused.evidence.map(task => task.title).join(' / ') : 'なし']],
+    options: (['fulfilled', 'suspected-gap', 'insufficient-info'] as const).map(key => ({ key, label: statusLabels[key] })),
+    picked: focused.status, effect: `${statusEffects[focused.status]} — ${focused.reason}`,
+  } : null;
 
   function chooseSample(id: string) {
     const next = breakdownSamples.find(item => item.id === id) ?? breakdownSamples[0];
@@ -31,12 +41,13 @@ export default function BreakdownCheckPage() {
 
     <div className="breakdown-toolbar panel"><label>Operation sample<select aria-label="Operation sample" value={selectedId} onChange={event => chooseSample(event.target.value)}>{breakdownSamples.map(item => <option key={item.id} value={item.id}>{item.id} · {item.label}</option>)}</select></label><span className="badge">5 examples</span><button className="secondary" onClick={() => setEvaluated(true)}>Run 50-case evaluation</button><span className="muted">fixed response · no external API · no task writes</span></div>
 
+    <section style={{ margin: '18px 0' }} aria-label="観点ごとの判断">{view ? <><div className="toolbar" style={{ margin: '0 0 10px' }}><span className="muted" style={{ fontSize: '.8rem', alignSelf: 'center' }}>観点ごとに1回ずつ判断しています:</span>{current.coverage.map(item => <button key={item.aspect} className={`chip ${item.aspect === focused?.aspect ? 'active' : ''}`} onClick={() => setFocusAspect(item.aspect)} aria-pressed={item.aspect === focused?.aspect}>{item.label} · {statusLabels[item.status]}</button>)}</div><JevDecision view={view} title={`いまの判断 · ${focused!.label}`} id="breakdown-decision" /></> : <p className="muted">必要観点が選ばれていないため、判断はありません。</p>}</section>
     <div className="breakdown-layout"><main>
       <section className="panel breakdown-input"><div className="section-title"><div><div className="eyebrow">1. INPUT</div><h2>目標・成果条件・既存タスク</h2></div><span className="badge">local only</span></div><label>目標<input aria-label="Goal title" value={goalTitle} onChange={event => setGoalTitle(event.target.value)} /></label><label>成果条件<textarea aria-label="Outcome" rows={2} value={outcome} onChange={event => setOutcome(event.target.value)} /></label><label>既存タスク（1行1件）<textarea aria-label="Existing tasks" rows={5} value={taskText} onChange={event => setTaskText(event.target.value)} /></label><div className="aspect-picker"><strong>必要観点</strong>{aspectOrder.map(aspect => <label key={aspect}><input type="checkbox" checked={requiredAspects.includes(aspect)} onChange={() => toggleAspect(aspect)} />{aspectLabels[aspect]}</label>)}</div></section>
 
       <section className="panel"><div className="section-title"><div><div className="eyebrow">2. GOAL TREE</div><h2>既存ツリーと根拠タスク</h2></div><span className="count">{tasks.length} tasks · {requiredAspects.length} aspects</span></div><div className="goal-tree"><div className="goal-node"><span>GOAL</span><strong>{goalTitle || '目標未入力'}</strong><small>{outcome || '成果条件未入力'}</small></div><div className="task-branches">{tasks.length === 0 ? <p className="muted">既存タスクがありません。</p> : tasks.map(task => <a className="task-node" id={task.id} href={task.url} key={task.id}><span>TASK</span><strong>{task.title}</strong><small>{task.description}</small></a>)}</div></div></section>
 
-      <section className="panel"><div className="section-title"><div><div className="eyebrow">3. SEMANTIC COVERAGE</div><h2>観点別の判定</h2></div><span className="badge">{current.mode}</span></div><div className="coverage-grid">{current.coverage.map(item => <article className="coverage-card" key={item.aspect}><div className="coverage-head"><strong>{item.label}</strong><span className={`coverage-status coverage-${item.status}`}>{statusLabels[item.status]}</span></div><p>{aspectDefinitions[item.aspect]}</p><div className="coverage-evidence">{item.evidence.length ? item.evidence.map(task => <a href={task.url} key={task.id}>↳ {task.id}: {task.title}</a>) : <span>根拠タスクなし</span>}</div><small>{item.reason}</small></article>)}</div><div className="coverage-note">判定は指定観点のcoverageのみ。情報不足は不足と断定せず、人が既存タスク・前提を確認してください。</div></section>
+      <section className="panel"><div className="section-title"><div><div className="eyebrow">3. SEMANTIC COVERAGE</div><h2>観点別の判定</h2></div><span className="badge">{current.mode}</span></div><div className="coverage-grid">{current.coverage.map(item => <article className="coverage-card" key={item.aspect} onClick={() => setFocusAspect(item.aspect)} style={{ cursor: 'pointer', outline: item.aspect === focused?.aspect ? '2px solid var(--teal)' : undefined }}><div className="coverage-head"><strong>{item.label}</strong><span className={`coverage-status coverage-${item.status}`}>{statusLabels[item.status]}</span></div><p>{aspectDefinitions[item.aspect]}</p><div className="coverage-evidence">{item.evidence.length ? item.evidence.map(task => <a href={task.url} key={task.id}>↳ {task.id}: {task.title}</a>) : <span>根拠タスクなし</span>}</div><small>{item.reason}</small></article>)}</div><div className="coverage-note">判定は指定観点のcoverageのみ。情報不足は不足と断定せず、人が既存タスク・前提を確認してください。</div></section>
 
       {evaluated && <section className="panel" data-testid="breakdown-evaluation"><div className="section-title"><div><div className="eyebrow">FIXED 50-CASE EVALUATION</div><h2>不足検出の評価</h2></div><span className="badge">{evaluationCases.length} cases · {metrics.totalChecks} checks</span></div><div className="breakdown-metrics"><div><span>不足検出率</span><strong>{(metrics.gapDetectionRate * 100).toFixed(1)}%</strong><small>人の不足疑いを検出した割合</small></div><div><span>誤指摘率</span><strong>{(metrics.falsePositiveRate * 100).toFixed(1)}%</strong><small>充足を不足疑いにした割合</small></div><div><span>保留率</span><strong>{(metrics.holdRate * 100).toFixed(1)}%</strong><small>情報不足として人へ戻した割合</small></div><div><span>費用比較</span><strong>$0 / $0 / $0.10</strong><small>keyword / Jev fixed / live estimate</small></div></div><div className="baseline-line"><strong>Keyword baseline</strong><span>不足検出率 {(metrics.baselineGapDetectionRate * 100).toFixed(1)}% · 誤指摘率 {(metrics.baselineFalsePositiveRate * 100).toFixed(1)}% · 保留率 {(metrics.baselineHoldRate * 100).toFixed(1)}%</span></div><p className="muted">固定合成データと参照coverageによる比較です。実際のプロジェクト品質や完全な分解を保証しません。</p></section>}
     </main><aside className="breakdown-side">

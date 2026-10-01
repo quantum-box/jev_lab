@@ -1,0 +1,25 @@
+/* CSV column mapping (was unstyled) */
+.mapping-page{max-width:1220px;margin:auto;padding:24px 22px 80px}
+.mapping-toolbar{display:flex;align-items:end;gap:14px;flex-wrap:wrap;margin-top:24px}
+.mapping-toolbar label{display:grid;gap:6px;font-size:.74rem;color:var(--muted);font-weight:800}
+.mapping-toolbar select,.mapping-row select{font:inherit;border:1px solid var(--line);border-radius:8px;background:#fbfdfb;color:var(--ink);padding:8px}
+.mapping-toolbar .muted{margin-left:auto;font-size:.75rem}
+.mapping-layout{display:grid;grid-template-columns:1.4fr .6fr;gap:20px;margin-top:20px}
+.mapping-layout main,.mapping-side{display:grid;gap:18px;align-content:start;padding:0}
+.mapping-input{width:100%;font:.8rem/1.6 ui-monospace,monospace;border:1px solid var(--line);border-radius:10px;padding:12px;background:#fbfdfb;color:var(--ink)}
+.version-row{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:.72rem;color:var(--muted)}
+.version-row b{color:var(--ink)}
+.mapping-table{display:grid;border-top:1px solid var(--line)}
+.mapping-row{display:grid;grid-template-columns:1fr 1.1fr 1.2fr .8fr;gap:12px;align-items:center;border-bottom:1px solid #edf1ee;padding:12px 8px;font-size:.78rem;border-radius:6px}
+.mapping-row strong,.mapping-row small{display:block}.mapping-row small{color:var(--muted);font-size:.68rem;margin-top:4px;line-height:1.5}
+.mapping-row select{font-size:.72rem;padding:6px;max-width:100%}
+.mapping-row code{font-size:.72rem;overflow-wrap:anywhere}
+.mapping-head{font-size:.68rem;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.mapping-page .success{margin-top:12px;font-size:.8rem;color:var(--teal);font-weight:700}
+.mapping-page .error{margin-top:12px}
+.config-json{font-size:.7rem;background:var(--ink);color:#d6efe5;border-radius:10px;padding:12px;overflow:auto;max-height:360px}
+.mapping-side .primary{margin-bottom:10px}
+.safety-list{margin:0;padding-left:18px;font-size:.8rem;line-height:1.8;color:var(--muted)}
+.mapping-eval-summary{display:flex;align-items:baseline;gap:10px;margin:14px 0}.mapping-eval-summary strong{font-size:2rem}.mapping-eval-summary span{color:var(--muted)}
+@media(max-width:900px){.mapping-layout{grid-template-columns:1fr}}
+@media(max-width:650px){.mapping-page{padding:18px 14px 55px}.mapping-row{grid-template-columns:1fr 1fr}.mapping-head{display:none}.mapping-toolbar .muted{margin-left:0}}

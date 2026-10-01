@@ -17,7 +17,7 @@ export const evidenceExamples: EvidenceCase[] = [
 
 const positiveWords = ['増加', '改善', '向上', '有効', '成功', 'increased', 'improved', 'enabled', 'passed'];
 const negativeWords = ['減少', '悪化', '無効', '失敗', 'decreased', 'worsened', 'disabled', 'failed'];
-const polarity = (text: string) => positiveWords.some(word => text.includes(word)) ? 'positive' : negativeWords.some(word => text.includes(word)) ? 'negative' : 'unknown';
+export const polarity = (text: string): 'positive' | 'negative' | 'unknown' => positiveWords.some(word => text.includes(word)) ? 'positive' : negativeWords.some(word => text.includes(word)) ? 'negative' : 'unknown';
 function citationFor(document: EvidenceDocument, hint: string): Citation | undefined {
   const start = document.text.indexOf(hint);
   if (start < 0) return undefined;

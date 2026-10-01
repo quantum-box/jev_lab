@@ -1,9 +1,12 @@
 'use client';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { EVIDENCE_CHECK_DATA_VERSION, EVIDENCE_CHECK_VERSION, checkEvidence, evidenceExamples, evidenceFailureExamples, evidenceMetrics, evidenceEvaluationCases, type EvidenceStatus } from '../../../lib/evidence-check';
+import { EVIDENCE_CHECK_DATA_VERSION, EVIDENCE_CHECK_VERSION, checkEvidence, evidenceExamples, evidenceFailureExamples, evidenceMetrics, evidenceEvaluationCases, polarity, type EvidenceStatus } from '../../../lib/evidence-check';
+import { JevDecision, type DecisionView } from '../../../components/JevDecision';
 
 const labels: Record<EvidenceStatus, string> = { supported: '支持', contradicted: '矛盾', insufficient: '根拠不足' };
+const polarityLabels = { positive: '肯定（増加・改善など）', negative: '否定（減少・無効など）', unknown: '判別できない' } as const;
+const effects: Record<EvidenceStatus, string> = { supported: '→ この主張は引用つきで通す', contradicted: '→ この主張を差し戻す（根拠と食い違う）', insufficient: '→ 補完せず保留し、人に根拠を確認してもらう' };
 function SourceText({ text, start, end }: { text: string; start?: number; end?: number }) {
   if (start === undefined || end === undefined) return <pre className="value-source">{text}</pre>;
   return <pre className="value-source">{text.slice(0, start)}<mark>{text.slice(start, end)}</mark>{text.slice(end)}</pre>;
@@ -14,10 +17,17 @@ export default function EvidenceCheckPage() {
   const item = evidenceExamples.find(example => example.id === selectedId) ?? evidenceExamples[0];
   const result = useMemo(() => checkEvidence(item), [item]);
   const metrics = useMemo(() => evidenceMetrics(evidenceEvaluationCases), []);
+  const view: DecisionView = {
+    question: 'この主張は、文書の根拠と整合している？', type: 'choice', source: 'replay',
+    state: [['主張', item.claim], ['見つかった引用', result.citations.length ? result.citations.map(c => `「${c.quote}」`).join(' ') : 'なし'], ['主張の向き', polarityLabels[polarity(item.claim)]], ['引用文脈の向き', result.citations.length ? polarityLabels[polarity(result.citations[0].context)] : '—'], ['文書内の命令文', result.ignoredPromptInstructions ? `${result.ignoredPromptInstructions}件（判定には使わない）` : 'なし']],
+    options: (['supported', 'contradicted', 'insufficient'] as const).map(key => ({ key, label: labels[key] })),
+    picked: result.status, effect: effects[result.status],
+  };
   return <div className="paper-page">
     <div className="paper-top"><div><Link className="back" href="/">← Back to gallery</Link><div className="eyebrow">業務 · Explain · fixed replay</div></div><span className="badge">claim-level evidence</span></div>
     <section className="paper-hero"><div><h1>主張ごとに、<br />根拠の位置を確かめる。</h1><p>支持・矛盾・根拠不足を主張単位で分け、元文書に実在する引用位置と周辺文脈を表示します。引用がない主張は補完せず保留します。</p></div><div className="paper-callout"><strong>文書内の命令は根拠ではない</strong><span>Prompt injection らしい文面はデータとして表示しますが、判定指示として無視します。外部検索・投稿・書き換えはありません。</span></div></section>
     <div className="paper-toolbar panel"><label>Claim sample<select aria-label="Claim sample" value={selectedId} onChange={e => setSelectedId(e.target.value)}>{evidenceExamples.map(example => <option key={example.id} value={example.id}>{example.id} · {example.label}</option>)}</select></label><span className="badge">5 operation examples · 50 claims</span><button className="secondary" onClick={() => setEvaluated(true)}>Run 50-case evaluation</button><span className="muted">fixed response · no external API</span></div>
+    <div style={{ margin: '18px 0' }}><JevDecision view={view} title={`いまの判断 · ${item.id}`} id="evidence-decision" /></div>
     <div className="paper-layout"><main>
       <section className="panel paper-abstract"><div className="section-title"><div><div className="eyebrow">CLAIM</div><h2>{item.claim}</h2></div><span className={'paper-decision decision-' + result.status}>{labels[result.status]}</span></div><p className="muted">case: {item.id} · result: {result.rationale}</p></section>
       <section className="panel"><div className="section-title"><div><div className="eyebrow">EVIDENCE LOCATIONS</div><h2>実在する引用と文脈</h2></div><span className="count">{result.citations.length} citations</span></div>{item.documents.map(doc => { const citation = result.citations.find(value => value.documentId === doc.id); return <article className="criterion-card" key={doc.id}><div className="criterion-head"><strong>{doc.title}</strong><span className="muted">{doc.id}</span></div><SourceText text={doc.text} start={citation?.start} end={citation?.end}/>{citation ? <small>offset {citation.start}–{citation.end} · context: {citation.context}</small> : <small>この文書に実在する支持引用はありません。</small>}</article>; })}</section>

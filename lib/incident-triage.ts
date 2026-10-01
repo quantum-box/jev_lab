@@ -12,6 +12,8 @@ export const runbooks: Runbook[] = [
 ];
 const categoryWords: Record<IncidentCategory, string[]> = { auth: ['401', '403', 'token', '認証', 'ログイン'], network: ['timeout', 'dns', '接続', 'network', '502'], data: ['schema', '不整合', 'database', 'データ'], availability: ['down', '503', '停止', 'latency', '可用性'], security: ['侵入', '漏洩', '攻撃', 'secret', '不正アクセス'], unknown: [] };
 export function maskSecrets(message: string) { return message.replace(/(Bearer\s+|api[_-]?key\s*[=:]\s*|password\s*[=:]\s*)([^\s,;]+)/gi, '$1[REDACTED]').replace(/sk-[A-Za-z0-9_-]+/g, 'sk-[REDACTED]'); }
+/** Per-category keyword hits the rule classifier uses (rule scores, not probabilities). */
+export function incidentKeywordHits(message: string) { const lower = message.toLocaleLowerCase('ja-JP'); return (Object.keys(categoryWords) as IncidentCategory[]).filter(category => category !== 'unknown').map(category => ({ category, words: categoryWords[category].filter(word => lower.includes(word.toLocaleLowerCase('ja-JP'))) })); }
 function classify(message: string): IncidentCategory { const lower = message.toLocaleLowerCase('ja-JP'); const scored = (Object.keys(categoryWords) as IncidentCategory[]).filter(category => category !== 'unknown').map(category => ({ category, score: categoryWords[category].filter(word => lower.includes(word.toLocaleLowerCase('ja-JP'))).length })).sort((a, b) => b.score - a.score); return scored[0]?.score ? scored[0].category : 'unknown'; }
 export const syntheticSimilar: IncidentLog[] = [
   { id: 'INC-101', service: 'api', message: '401 token expired after deployment' },

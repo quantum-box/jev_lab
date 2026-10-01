@@ -75,13 +75,18 @@ const hash = (value: string) => {
   return h >>> 0;
 };
 
-function requestedEnergy(prompt: string): DjEnergy | null {
+export function requestedEnergy(prompt: string): DjEnergy | null {
   const p = prompt.toLowerCase();
   if (/静|落ち着|集中|余白|calm|focus|quiet|soft/.test(p)) return 'low';
   if (/元気|走|強|夜|高|energy|bright|sprint|drive/.test(p)) return 'high';
   if (/軽|前向|自然|作業|warm|flow|work/.test(p)) return 'mid';
   return null;
 }
+
+export const djTargetEnergy = (seed: number, prompt: string): { energy: DjEnergy; fromPrompt: boolean } => {
+  const requested = requestedEnergy(clampPrompt(prompt));
+  return { energy: requested ?? DJ_SCENARIOS.find(s => s.seed === seed)?.targetEnergy ?? 'mid', fromPrompt: requested !== null };
+};
 
 const energyDistance = (a: DjEnergy, b: DjEnergy) => Math.abs(['low', 'mid', 'high'].indexOf(a) - ['low', 'mid', 'high'].indexOf(b));
 

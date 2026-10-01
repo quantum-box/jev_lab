@@ -164,6 +164,9 @@ const KEYWORD_RULES: readonly {intent: LivingIntent; terms: readonly string[]; c
   {intent: 'scan', terms: ['一覧', 'リスト', '担当', 'ステータス', '全体', 'まとめ'], components: ['table'], reason: '一覧の意図に対してテーブルを選択'},
 ] as const;
 
+// The typed choice the resolver answers: which intent (and therefore which registered display) fits the prompt.
+export const LIVING_INTENT_CHOICES: readonly {intent: LivingIntent; components: readonly DisplayComponentId[]}[] = KEYWORD_RULES.map(({intent, components}) => ({intent, components}));
+
 function normalized(prompt: string): string {
   return String(prompt ?? '').trim().toLocaleLowerCase('ja-JP');
 }
