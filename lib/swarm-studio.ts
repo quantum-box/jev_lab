@@ -1,6 +1,6 @@
 export type Robot={id:string;x:number;y:number;battery:number;capacity:number;failed:boolean;jobId:string|null};
 export type Job={id:string;x:number;y:number;priority:number;fragile:boolean;weight:number;done:boolean};
-export type SwarmEvent={step:number;type:'assign'|'move'|'complete'|'reject'|'wait'|'failure';robotId?:string;jobId?:string;detail:string};
+export type SwarmEvent={step:number;type:'assign'|'move'|'complete'|'reject'|'wait'|'failure';robotId?:string;jobId?:string;detail:string;candidates?:string[];kept?:boolean};
 export type SwarmRun={seed:number;command:string;robots:Robot[];jobs:Job[];events:SwarmEvent[];step:number;stopped:boolean;completed:number;priorityCompleted:number;wastedMoves:number;apiCalls:number;estimatedCost:number;latencyMs:number};
 export const swarmSeeds=Array.from({length:10},(_,i)=>900+i);
 export function createSwarm(seed=swarmSeeds[0],count=20):SwarmRun{
@@ -16,9 +16,9 @@ export function stepSwarm(run:SwarmRun):SwarmRun{
  const occupied=new Set(robots.map(robot=>`${robot.x},${robot.y}`)); const reserved=new Set<string>();
  for(const robot of robots){
   if(robot.failed){events.push({step,type:'failure',robotId:robot.id,detail:'故障個体をコード制約で停止'});continue;}
-  let job=jobs.find(j=>j.id===robot.jobId&&!j.done&&!claimed.has(j.id));
-  if(!job){job=jobs.filter(j=>!j.done&&!claimed.has(j.id)&&j.weight<=robot.capacity).sort((a,b)=>Number(b.fragile)-Number(a.fragile)||b.priority-a.priority||Math.abs(robot.x-a.x)+Math.abs(robot.y-a.y)-Math.abs(robot.x-b.x)-Math.abs(robot.y-b.y))[0];}
-  if(!job){robot.jobId=null;continue;} claimed.add(job.id); robot.jobId=job.id; events.push({step,type:'assign',robotId:robot.id,jobId:job.id,detail:'有効な単一割当'});
+  let job=jobs.find(j=>j.id===robot.jobId&&!j.done&&!claimed.has(j.id)); const kept=!!job; let candidates=job?[job.id]:[];
+  if(!job){const pool=jobs.filter(j=>!j.done&&!claimed.has(j.id)&&j.weight<=robot.capacity).sort((a,b)=>Number(b.fragile)-Number(a.fragile)||b.priority-a.priority||Math.abs(robot.x-a.x)+Math.abs(robot.y-a.y)-Math.abs(robot.x-b.x)-Math.abs(robot.y-b.y));job=pool[0];candidates=pool.map(j=>j.id);}
+  if(!job){robot.jobId=null;continue;} claimed.add(job.id); robot.jobId=job.id; events.push({step,type:'assign',robotId:robot.id,jobId:job.id,detail:'有効な単一割当',candidates,kept});
   if(robot.battery<10||job.weight>robot.capacity){events.push({step,type:'reject',robotId:robot.id,jobId:job.id,detail:'容量/バッテリー制約'});robot.jobId=null;continue;}
   const nextX=robot.x+Math.sign(job.x-robot.x),nextY=robot.y+Math.sign(job.y-robot.y),destination=`${nextX},${nextY}`,current=`${robot.x},${robot.y}`;
   if(destination!==current&&(occupied.has(destination)||reserved.has(destination))){events.push({step,type:'reject',robotId:robot.id,jobId:job.id,detail:`collision avoidance: ${destination} is occupied or reserved; wait`},{step,type:'wait',robotId:robot.id,jobId:job.id,detail:'移動先が既占有/予約済みのため待機'});continue;}

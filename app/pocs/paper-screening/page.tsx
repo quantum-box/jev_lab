@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { JevDecision, type DecisionView } from '../../../components/JevDecision';
 import {
   PAPER_SCREENING_CRITERIA_VERSION,
   PAPER_SCREENING_DATA_VERSION,
@@ -33,6 +34,16 @@ export default function PaperScreeningPage() {
   const humanDecision = reviewerDecisions[paper.id] ?? paper.humanDecision;
   const isCompared = humanDecision === result.decision;
 
+  const decisionView: DecisionView = {
+    question: 'この論文をレビューに含める？',
+    type: 'choice',
+    state: [['論文', `${paper.id} · ${paper.title}`], ...result.criteria.map(item => [item.label, criterionStatusLabels[item.status]] as [string, string])],
+    options: (Object.keys(decisionLabels) as ScreeningDecision[]).map(key => ({ key, label: decisionLabels[key] })),
+    picked: result.decision,
+    source: 'replay',
+    effect: `→ 候補一覧の「${decisionLabels[result.decision]}」に入り、人の採否と比較されます`,
+  };
+
   function setHumanDecision(value: ScreeningDecision) {
     setReviewerDecisions(current => ({ ...current, [paper.id]: value }));
   }
@@ -45,9 +56,11 @@ export default function PaperScreeningPage() {
     </section>
 
     <div className="paper-toolbar panel">
-      <label>Screening sample<select aria-label="Screening sample" value={selectedId} onChange={event => setSelectedId(event.target.value)}>{screeningSamples.map(item => <option key={item.id} value={item.id}>{item.id} · {item.title}</option>)}</select></label>
+      <label style={{ minWidth: 0, maxWidth: '100%' }}>Screening sample<select aria-label="Screening sample" style={{ maxWidth: '100%', minWidth: 0, width: '100%' }} value={selectedId} onChange={event => setSelectedId(event.target.value)}>{screeningSamples.map(item => <option key={item.id} value={item.id}>{item.id} · {item.title}</option>)}</select></label>
       <span className="badge">5 operation examples</span><button className="secondary" onClick={() => setEvaluated(true)}>Run 50-case evaluation</button><span className="muted">fixed response · no external API · no secrets</span>
     </div>
+
+    <JevDecision view={decisionView} title="選んだ論文への判断" />
 
     <div className="paper-layout"><main>
       <section className="panel paper-abstract"><div className="section-title"><div><div className="eyebrow">SELECTED ABSTRACT</div><h2>{paper.title}</h2></div><span className="badge">{paper.language}</span></div><p className="paper-byline">{paper.authors} · {paper.year} · {paper.id}</p><p className="abstract-text">{paper.abstract}</p><div className="paper-source"><span>Source: <a href={paper.source.url} target="_blank" rel="noreferrer">{paper.source.label}</a></span><span>{paper.source.license}</span><span>{paper.source.provenance}</span></div></section>

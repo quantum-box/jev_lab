@@ -1,25 +1,35 @@
 'use client';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { JevDecision, DecisionLog } from '../../../components/JevDecision';
+import type { ArenaAction } from '../../../lib/reflex-arena';
 import { baselinePolicy, evolutionFixedExperiment, runEvolutionExperiment, type ArenaPolicy, type EvolutionExperiment, type PolicyParameters } from '../../../lib/evolution-arena';
 
 const score = (value: number) => (value * 100).toFixed(1) + '%';
+const actionName: Record<ArenaAction, string> = { north: '↑ 北へ移動', south: '↓ 南へ移動', east: '→ 東へ移動', west: '← 西へ移動', attack: '攻撃', guard: '護衛', heal: '回復', wait: '待機' };
+const gap = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 const outcomeLabel: Record<string, string> = { victory: 'victory', defeat: 'defeat', capped: 'capped' };
 
 export default function EvolutionArenaPage() {
   const [policy, setPolicy] = useState<ArenaPolicy>(baselinePolicy);
   const [experiment, setExperiment] = useState<EvolutionExperiment>(evolutionFixedExperiment);
   const [running, setRunning] = useState(false);
+  const [cursor, setCursor] = useState<number | null>(null);
   const baseline = experiment.generations[0];
   const selected = experiment.generations.find(node => node.policy.id === experiment.selectedPolicyId) ?? baseline;
   const finalTrace = selected.final?.runs[0]?.trace ?? selected.training.runs[0]?.trace ?? [];
+  const traceRun = selected.final?.runs[0] ?? selected.training.runs[0];
+  const decisions = finalTrace.flatMap((event, index) => event.type === 'decision' ? [{ event, snap: [...finalTrace.slice(0, index)].reverse().find(x => x.type === 'snapshot' && x.step === event.step), failed: finalTrace.some(x => x.type === 'failure' && x.step === event.step), applied: finalTrace.find(x => x.type === 'apply' && x.step === event.step) }] : []);
+  const at = decisions.length ? Math.min(cursor ?? decisions.length - 1, decisions.length - 1) : -1;
+  const current = at >= 0 ? decisions[at] : null;
   const accepted = experiment.generations.filter(node => node.disposition === 'accepted');
   const updateParams = (change: Partial<PolicyParameters>) => setPolicy(current => ({ ...current, parameters: { ...current.parameters, ...change } }));
-  function revise() { setRunning(true); setExperiment(runEvolutionExperiment(policy)); setRunning(false); }
+  function revise() { setRunning(true); setExperiment(runEvolutionExperiment(policy)); setCursor(null); setRunning(false); }
   const policySummary = useMemo(() => policy.parameters.preferredMove + ' · heal ≤ ' + policy.parameters.healAtHealth + ' · protect ≤ ' + policy.parameters.protectAtAllyHealth, [policy]);
   return <div className="evolution-page">
     <div className="evolution-top"><div><Link className="back" href="/">← Back to gallery</Link><div className="eyebrow">研究・実験 · Simulate · deterministic</div></div><Link className="secondary" href="/pocs/reflex-arena">Open Reflex Arena</Link></div>
     <section className="evolution-hero"><div><h1>失敗traceから、次の方針を試す。</h1><p>Reflex Arena の固定環境で、失敗traceを観察し、別LLMが改訂したという設定の方針候補を決定的に比較します。Jev の再挑戦は同じ validator と reward のまま行われます。</p></div><div className="evolution-callout"><strong>変更できるのは方針だけ</strong><span>環境・報酬・validator・実行コード・秘密評価セットは固定。コード自己改変や実環境への出荷はありません。</span></div></section>
+    <section className="evo-jd" aria-label="採用方針での一手ごとの判断">{current && current.event.type === 'decision' && current.snap?.type === 'snapshot' ? <><div className="evo-jd-scrub"><label>採用方針 {selected.policy.id} で {traceRun?.scenarioId} を再生 · step <b>{current.event.step}</b><input type="range" min={0} max={decisions.length - 1} value={at} onChange={e => setCursor(Number(e.target.value))} aria-label="Decision step" /></label><span className="muted">スライダーで一手ずつ確認</span></div><div className="evo-jd-row"><JevDecision title={`この瞬間の判断 · step ${current.event.step}`} view={{ question: 'ヒーローの次の一手は？', type: 'choice', state: [['自分のHP', `${current.snap.state.health} / 5`], ['味方のHP', `${current.snap.state.allyHealth}`], ['敵', `距離${gap(current.snap.state.hero, current.snap.state.enemy)}マス · HP ${current.snap.state.enemyHealth}`], ['方針パラメータ', `heal ≤ ${selected.policy.parameters.healAtHealth} · protect ≤ ${selected.policy.parameters.protectAtAllyHealth} · ${selected.policy.parameters.preferredMove}`]], options: current.event.candidates.map(a => ({ key: a, label: actionName[a] })), picked: current.event.action, source: 'rule', effect: current.failed ? '→ 固定validatorが却下し、安全行動（護衛）に置換' : `→ 「${actionName[current.event.action]}」を適用。結果: ${current.applied?.type === 'apply' ? outcomeLabel[current.applied.outcome] ?? current.applied.outcome : '—'}` }} /><DecisionLog title="一手ごとの判断ログ（新しい順）" items={decisions.slice(0, at + 1).slice(-12).reverse().map(d => ({ id: String(d.event.step), who: `#${d.event.step}`, question: '次の一手', answer: d.event.type === 'decision' ? actionName[d.event.action] : '', source: 'rule' as const, ok: !d.failed }))} /></div></> : <p className="muted">再生できる判断がありません。</p>}</section>
     <div className="evolution-grid">
       <main>
         <section className="panel evolution-policy"><div className="section-title"><div><div className="eyebrow">INITIAL POLICY</div><h2>初期方針 → 訓練シナリオ</h2></div><span className="badge">policy text + allow-list only</span></div><label>方針テキスト<textarea aria-label="Policy text" value={policy.text} onChange={e => setPolicy(current => ({ ...current, text: e.target.value }))} rows={4}/></label><div className="evolution-params"><label>healAtHealth<input aria-label="healAtHealth" type="number" min={0} max={5} value={policy.parameters.healAtHealth} onChange={e => updateParams({ healAtHealth: Number(e.target.value) })}/></label><label>protectAtAllyHealth<input aria-label="protectAtAllyHealth" type="number" min={0} max={5} value={policy.parameters.protectAtAllyHealth} onChange={e => updateParams({ protectAtAllyHealth: Number(e.target.value) })}/></label><label>preferredMove<select aria-label="preferredMove" value={policy.parameters.preferredMove} onChange={e => updateParams({ preferredMove: e.target.value as PolicyParameters['preferredMove'] })}><option value="east">east</option><option value="south">south</option><option value="toward-exit">toward-exit</option></select></label><label className="evolution-check"><input type="checkbox" checked={policy.parameters.attackWhenAdjacent} onChange={e => updateParams({ attackWhenAdjacent: e.target.checked })}/> attackWhenAdjacent</label></div><p className="muted">現在の許可パラメータ: {policySummary}</p><button className="primary" onClick={revise} disabled={running}>{running ? 'running…' : '別LLM候補を生成して再挑戦'}</button><div className="notice">候補生成には revision-training の失敗traceだけを使います。selection-holdout と final-unused の結果は候補方針へ渡しません。</div></section>
